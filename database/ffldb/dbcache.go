@@ -6,12 +6,15 @@ package ffldb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/btcsuite/btcd/database/internal/treap"
-	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/ledgerwatch/erigon-lib/kv"
+
+	// "github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
@@ -37,6 +40,9 @@ const (
 	// prevent the GC from allocating a lot of extra unneeded space.
 	ldbBatchHeaderSize = 12
 	ldbRecordIKeySize  = 8
+
+	// MDBX root bucket name
+	mdbxRootBucket = "rootBucket"
 )
 
 // ldbCacheIter wraps a treap iterator to provide the additional functionality
@@ -285,7 +291,7 @@ func (iter *dbCacheIterator) Error() error {
 // dbCacheSnapshot defines a snapshot of the database cache and underlying
 // database at a particular point in time.
 type dbCacheSnapshot struct {
-	dbSnapshot    *leveldb.Snapshot
+	// dbSnapshot    *leveldb.Snapshot
 	pendingKeys   *treap.Immutable
 	pendingRemove *treap.Immutable
 }
@@ -301,8 +307,9 @@ func (snap *dbCacheSnapshot) Has(key []byte) bool {
 	}
 
 	// Consult the database.
-	hasKey, _ := snap.dbSnapshot.Has(key, nil)
-	return hasKey
+	// hasKey, _ := snap.dbSnapshot.Has(key, nil)
+	// return hasKey
+	return false
 }
 
 // Get returns the value for the passed key.  The function will return nil when
@@ -317,16 +324,17 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 	}
 
 	// Consult the database.
-	value, err := snap.dbSnapshot.Get(key, nil)
-	if err != nil {
-		return nil
-	}
-	return value
+	// value, err := snap.dbSnapshot.Get(key, nil)
+	// if err != nil {
+	// 	return nil
+	// }
+	// return value
+	return nil
 }
 
 // Release releases the snapshot.
 func (snap *dbCacheSnapshot) Release() {
-	snap.dbSnapshot.Release()
+	// snap.dbSnapshot.Release()
 	snap.pendingKeys = nil
 	snap.pendingRemove = nil
 }
@@ -340,7 +348,7 @@ func (snap *dbCacheSnapshot) Release() {
 // can be nil if the functionality is not desired.
 func (snap *dbCacheSnapshot) NewIterator(slice *util.Range) *dbCacheIterator {
 	return &dbCacheIterator{
-		dbIter:        snap.dbSnapshot.NewIterator(slice, nil),
+		// dbIter:        snap.dbSnapshot.NewIterator(slice, nil),
 		cacheIter:     newLdbCacheIter(snap, slice),
 		cacheSnapshot: snap,
 	}
@@ -355,7 +363,9 @@ func (snap *dbCacheSnapshot) NewIterator(slice *util.Range) *dbCacheIterator {
 // to frequent disk syncs.
 type dbCache struct {
 	// ldb is the underlying leveldb DB for metadata.
-	ldb *leveldb.DB
+	// ldb *leveldb.DB
+
+	mdb kv.RwDB
 
 	// store is used to sync blocks to flat files.
 	store *blockStore
@@ -396,18 +406,18 @@ type dbCache struct {
 //
 // The snapshot must be released after use by calling Release.
 func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
-	dbSnapshot, err := c.ldb.GetSnapshot()
-	if err != nil {
-		str := "failed to open transaction"
-		return nil, convertErr(str, err)
-	}
+	// dbSnapshot, err := c.ldb.GetSnapshot()
+	// if err != nil {
+	// 	str := "failed to open transaction"
+	// 	return nil, convertErr(str, err)
+	// }
 
 	// Since the cached keys to be added and removed use an immutable treap,
 	// a snapshot is simply obtaining the root of the tree under the lock
 	// which is used to atomically swap the root.
 	c.cacheLock.RLock()
 	cacheSnapshot := &dbCacheSnapshot{
-		dbSnapshot:    dbSnapshot,
+		// dbSnapshot:    dbSnapshot,
 		pendingKeys:   c.cachedKeys,
 		pendingRemove: c.cachedRemove,
 	}
@@ -420,20 +430,48 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 // the transaction to be rolled back and are returned from this function.
 // Otherwise, the transaction is committed when the user-supplied function
 // returns a nil error.
-func (c *dbCache) updateDB(fn func(ldbTx *leveldb.Transaction) error) error {
+// func (c *dbCache) updateDB(fn func(ldbTx *leveldb.Transaction) error) error {
+// 	// Start a leveldb transaction.
+// 	ldbTx, err := c.ldb.OpenTransaction()
+// 	if err != nil {
+// 		return convertErr("failed to open ldb transaction", err)
+// 	}
+
+// 	if err := fn(ldbTx); err != nil {
+// 		ldbTx.Discard()
+// 		return err
+// 	}
+
+// 	// Commit the leveldb transaction and convert any errors as needed.
+// 	if err := ldbTx.Commit(); err != nil {
+// 		return convertErr("failed to commit leveldb transaction", err)
+// 	}
+// 	return nil
+// }
+func (c *dbCache) updateDB(fn func(bucket string, mdbTx kv.RwTx) error) error {
 	// Start a leveldb transaction.
-	ldbTx, err := c.ldb.OpenTransaction()
+	mdbTx, err := c.mdb.BeginRw(context.Background())
 	if err != nil {
 		return convertErr("failed to open ldb transaction", err)
 	}
+	existing, err := mdbTx.ExistsBucket(mdbxRootBucket)
+	if err != nil {
+		return convertErr("failed to create bucket", err)
+	}
+	if !existing {
+		err = mdbTx.CreateBucket(mdbxRootBucket)
+		if err != nil {
+			return convertErr("failed to create bucket", err)
+		}
+	}
 
-	if err := fn(ldbTx); err != nil {
-		ldbTx.Discard()
+	if err := fn(mdbxRootBucket, mdbTx); err != nil {
+		mdbTx.Rollback()
 		return err
 	}
 
 	// Commit the leveldb transaction and convert any errors as needed.
-	if err := ldbTx.Commit(); err != nil {
+	if err := mdbTx.Commit(); err != nil {
 		return convertErr("failed to commit leveldb transaction", err)
 	}
 	return nil
@@ -451,10 +489,37 @@ type TreapForEacher interface {
 // updates to the underlying database.
 func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error {
 	// Perform all leveldb updates using an atomic transaction.
-	return c.updateDB(func(ldbTx *leveldb.Transaction) error {
+	// return c.updateDB(func(ldbTx *leveldb.Transaction) error {
+	// 	var innerErr error
+	// 	pendingKeys.ForEach(func(k, v []byte) bool {
+	// 		if dbErr := ldbTx.Put(k, v, nil); dbErr != nil {
+	// 			str := fmt.Sprintf("failed to put key %q to "+
+	// 				"ldb transaction", k)
+	// 			innerErr = convertErr(str, dbErr)
+	// 			return false
+	// 		}
+	// 		return true
+	// 	})
+	// 	if innerErr != nil {
+	// 		return innerErr
+	// 	}
+
+	// 	pendingRemove.ForEach(func(k, v []byte) bool {
+	// 		if dbErr := ldbTx.Delete(k, nil); dbErr != nil {
+	// 			str := fmt.Sprintf("failed to delete "+
+	// 				"key %q from ldb transaction",
+	// 				k)
+	// 			innerErr = convertErr(str, dbErr)
+	// 			return false
+	// 		}
+	// 		return true
+	// 	})
+	// 	return innerErr
+	// })
+	return c.updateDB(func(bucket string, mdbTx kv.RwTx) error {
 		var innerErr error
 		pendingKeys.ForEach(func(k, v []byte) bool {
-			if dbErr := ldbTx.Put(k, v, nil); dbErr != nil {
+			if dbErr := mdbTx.Put(bucket, k, v); dbErr != nil {
 				str := fmt.Sprintf("failed to put key %q to "+
 					"ldb transaction", k)
 				innerErr = convertErr(str, dbErr)
@@ -467,7 +532,7 @@ func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error 
 		}
 
 		pendingRemove.ForEach(func(k, v []byte) bool {
-			if dbErr := ldbTx.Delete(k, nil); dbErr != nil {
+			if dbErr := mdbTx.Delete(bucket, k, nil); dbErr != nil {
 				str := fmt.Sprintf("failed to delete "+
 					"key %q from ldb transaction",
 					k)
@@ -630,15 +695,21 @@ func (c *dbCache) Close() error {
 		// Even if there is an error while flushing, attempt to close
 		// the underlying database.  The error is ignored since it would
 		// mask the flush error.
+		/* comments here for leveldb
 		_ = c.ldb.Close()
+		*/
+
+		c.mdb.Close()
+
 		return err
 	}
 
 	// Close the underlying leveldb database.
-	if err := c.ldb.Close(); err != nil {
-		str := "failed to close underlying leveldb database"
-		return convertErr(str, err)
-	}
+	// if err := c.ldb.Close(); err != nil {
+	// 	str := "failed to close underlying leveldb database"
+	// 	return convertErr(str, err)
+	// }
+	c.mdb.Close()
 
 	return nil
 }
@@ -647,6 +718,8 @@ func (c *dbCache) Close() error {
 // leveldb instance.  The cache will be flushed to leveldb when the max size
 // exceeds the provided value or it has been longer than the provided interval
 // since the last flush.
+
+/* comments here for leveldb
 func newDbCache(ldb *leveldb.DB, store *blockStore, maxSize uint64, flushIntervalSecs uint32) *dbCache {
 	return &dbCache{
 		ldb:           ldb,
@@ -658,3 +731,20 @@ func newDbCache(ldb *leveldb.DB, store *blockStore, maxSize uint64, flushInterva
 		cachedRemove:  treap.NewImmutable(),
 	}
 }
+*/
+
+// --------- for mdbx
+func newDbCache(mdb kv.RwDB, store *blockStore, maxSize uint64, flushIntervalSecs uint32) *dbCache {
+	return &dbCache{
+		// ldb:           ldb,
+		mdb:           mdb,
+		store:         store,
+		maxSize:       maxSize,
+		flushInterval: time.Second * time.Duration(flushIntervalSecs),
+		lastFlush:     time.Now(),
+		cachedKeys:    treap.NewImmutable(),
+		cachedRemove:  treap.NewImmutable(),
+	}
+}
+
+// --------- for mdbx

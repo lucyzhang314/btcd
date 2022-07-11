@@ -6,6 +6,7 @@ package ffldb
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -14,18 +15,20 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/database/internal/treap"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/comparer"
 	ldberrors "github.com/syndtr/goleveldb/leveldb/errors"
-	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
+
+	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
+	mdbxlog "github.com/ledgerwatch/log/v3"
 )
 
 const (
@@ -1953,28 +1956,41 @@ func fileExists(name string) bool {
 
 // initDB creates the initial buckets and values used by the package.  This is
 // mainly in a separate function for testing purposes.
-func initDB(ldb *leveldb.DB) error {
-	// The starting block file write cursor location is file num 0, offset
-	// 0.
-	batch := new(leveldb.Batch)
-	batch.Put(bucketizedKey(metadataBucketID, writeLocKeyName),
-		serializeWriteRow(0, 0))
+// func initDB(ldb *leveldb.DB) error {
+// 	// The starting block file write cursor location is file num 0, offset
+// 	// 0.
+// 	batch := new(leveldb.Batch)
+// 	batch.Put(bucketizedKey(metadataBucketID, writeLocKeyName),
+// 		serializeWriteRow(0, 0))
 
-	// Create block index bucket and set the current bucket id.
-	//
-	// NOTE: Since buckets are virtualized through the use of prefixes,
-	// there is no need to store the bucket index data for the metadata
-	// bucket in the database.  However, the first bucket ID to use does
-	// need to account for it to ensure there are no key collisions.
-	batch.Put(bucketIndexKey(metadataBucketID, blockIdxBucketName),
-		blockIdxBucketID[:])
-	batch.Put(curBucketIDKeyName, blockIdxBucketID[:])
+// 	// Create block index bucket and set the current bucket id.
+// 	//
+// 	// NOTE: Since buckets are virtualized through the use of prefixes,
+// 	// there is no need to store the bucket index data for the metadata
+// 	// bucket in the database.  However, the first bucket ID to use does
+// 	// need to account for it to ensure there are no key collisions.
+// 	batch.Put(bucketIndexKey(metadataBucketID, blockIdxBucketName),
+// 		blockIdxBucketID[:])
+// 	batch.Put(curBucketIDKeyName, blockIdxBucketID[:])
 
-	// Write everything as a single batch.
-	if err := ldb.Write(batch, nil); err != nil {
-		str := fmt.Sprintf("failed to initialize metadata database: %v",
-			err)
-		return convertErr(str, err)
+// 	// Write everything as a single batch.
+// 	if err := ldb.Write(batch, nil); err != nil {
+// 		str := fmt.Sprintf("failed to initialize metadata database: %v",
+// 			err)
+// 		return convertErr(str, err)
+// 	}
+
+// 	return nil
+// }
+func initMDBX(mdb kv.RwDB) error {
+	// Start a leveldb transaction.
+	mdbTx, err := mdb.BeginRw(context.Background())
+	if err != nil {
+		return convertErr("failed to open ldb transaction", err)
+	}
+	err = mdbTx.CreateBucket(mdbxRootBucket)
+	if err != nil {
+		return convertErr("failed to create bucket", err)
 	}
 
 	return nil
@@ -1999,6 +2015,7 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 		_ = os.MkdirAll(dbPath, 0700)
 	}
 
+	/* comments here for leveldb
 	// Open the metadata database (will create it if needed).
 	opts := opt.Options{
 		ErrorIfExist: create,
@@ -2010,6 +2027,12 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 	if err != nil {
 		return nil, convertErr(err.Error(), err)
 	}
+	*/
+
+	// --------- for mdbx
+	logger := mdbxlog.New()
+	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).MustOpen()
+	// --------- for mdbx
 
 	// Create the block store which includes scanning the existing flat
 	// block files to find what the current write cursor position is
@@ -2017,7 +2040,15 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 	// database cache which wraps the underlying leveldb database to provide
 	// write caching.
 	store := newBlockStore(dbPath, network)
+
+	/* comments here for leveldb
 	cache := newDbCache(ldb, store, defaultCacheSize, defaultFlushSecs)
+	*/
+
+	// --------- for mdbx
+	cache := newDbCache(mdb, store, defaultCacheSize, defaultFlushSecs)
+	// --------- for mdbx
+
 	pdb := &db{store: store, cache: cache}
 
 	// Perform any reconciliation needed between the block and metadata as
