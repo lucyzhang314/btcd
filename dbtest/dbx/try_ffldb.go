@@ -3,109 +3,111 @@ package dbx
 import (
 	"bytes"
 	"fmt"
-	"github.com/btcsuite/btcd/btcutil"
+	"os"
+	"path/filepath"
+
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/btcsuite/btcd/wire"
-	"os"
-	"path/filepath"
 )
 
-func myOperaion() {
-	fmt.Println("--- go starting ---")
-}
+var (
+	db    database.DB
+	key   = []byte("kvn_key1")
+	value = []byte("bityi_value")
+)
 
 func TryFfldb() {
-	TestFFldb_two()
-	//TestFFldb_3()
-	//TestFFldb_4()
-}
-
-func TestFFldb_two() {
-	dbpath := filepath.Join(os.TempDir(), "testDrvDev")
-	db, err := database.Create("ffldb", dbpath, wire.MainNet)
+	var err error
+	dbpath := filepath.Join(os.TempDir(), "testDrvDe_mdbx")
+	//dbpath := filepath.Join(os.TempDir(), "testDrvDe_leveldb")
+	db, err = database.Create("ffldb", dbpath, wire.MainNet)
 	if err != nil {
 		fmt.Println("create database error:", err)
 		return
 	}
-	defer os.RemoveAll(dbpath)
+
+	// TestFFldb_two()
+	TestFFldb_323()
+	//TestFFldb_3()
+	//TestFFldb_4()
+
+	//defer os.RemoveAll(dbpath)
 	defer db.Close()
+}
 
-	return
+func TestFFldb_two() {
+	// err = db.Update(func(tx database.Tx) error {
+	// 	md := tx.Metadata()
+	// 	err := md.Put(key, value)
+	// 	if err != nil {
+	// 		return err
+	// 	}
 
-	err = db.Update(func(tx database.Tx) error {
-		key := []byte("kvn_key")
-		value := []byte("bityi_value")
+	// 	retrivedValue := md.Get(key)
+	// 	if !bytes.Equal(retrivedValue, value) {
+	// 		return fmt.Errorf("not equal")
+	// 	}
 
-		md := tx.Metadata()
-		err := md.Put(key, value)
-		if err != nil {
-			return err
+	// 	return nil
+	// })
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
+	db.View(func(tx database.Tx) error {
+
+		readValue := tx.Metadata().Get(key)
+		if !bytes.Equal(readValue, value) {
+			return fmt.Errorf("unexpected value for key '%s'", key)
 		}
 
-		retrivedValue := md.Get(key)
-		if !bytes.Equal(retrivedValue, value) {
-			return fmt.Errorf("not equal")
-		}
-
-		nestedBucketKey := []byte("myBucket")
-		nestedBucket, err := md.CreateBucket(nestedBucketKey)
-		if err != nil {
-			return err
-		}
-		if nestedBucket.Get(key) != nil {
-			return fmt.Errorf("unexpected")
-		}
 		return nil
 	})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+}
 
-	err = db.Update(func(tx database.Tx) error {
-		genesisBlock := chaincfg.MainNetParams.GenesisBlock
-		return tx.StoreBlock(btcutil.NewBlock(genesisBlock))
-	})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+func TestFFldb_323() {
+	var err error
+	//err = db.Update(func(tx database.Tx) error {
+	//	genesisBlock := chaincfg.MainNetParams.GenesisBlock
+	//	return tx.StoreBlock(btcutil.NewBlock(genesisBlock))
+	//})
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//return
 
 	var loadedBlockBytes []byte
-	err = db.Update(func(tx database.Tx) error {
+	err = db.View(func(tx database.Tx) error {
 		genesisHash := chaincfg.MainNetParams.GenesisHash
 
 		// chekc has block func
 		existing, err := tx.HasBlock(genesisHash)
 		if err != nil {
+			fmt.Println("is block existing:", existing)
 			return err
 		}
-		fmt.Println("is block existing:", existing)
 
-		blockHashs := []chainhash.Hash{*genesisHash}
-		existings, err := tx.HasBlocks(blockHashs)
-		if err != nil {
-			return err
-		}
-		for _, exist := range existings {
-			fmt.Println("is block existing 2:", exist)
-		}
+		//blockHashs := []chainhash.Hash{*genesisHash}
+		//existings, err := tx.HasBlocks(blockHashs)
+		//if err != nil {
+		//	fmt.Println("is block existing 2:", exist)
+		//	return err
+		//}
 
 		// check fetch blocks
 		blockBytes, err := tx.FetchBlock(genesisHash)
 		if err != nil {
 			return err
 		}
-		blockBytesMul, err := tx.FetchBlocks(blockHashs)
-		if err != nil {
-			return err
-		}
-		for _, block := range blockBytesMul {
-			fmt.Println("block 2:", string(block))
-		}
+		//blockBytesMul, err := tx.FetchBlocks(blockHashs)
+		//if err != nil {
+		//	fmt.Println("block 2:", string(block))
+		//	return err
+		//}
 
 		// check fetch block header
 		headerBytes, err := tx.FetchBlockHeader(genesisHash)
@@ -113,13 +115,11 @@ func TestFFldb_two() {
 			return err
 		}
 		fmt.Println("header:", string(headerBytes))
-		headerBytesMul, err := tx.FetchBlockHeaders(blockHashs)
-		if err != nil {
-			return err
-		}
-		for _, head := range headerBytesMul {
-			fmt.Println("block 2:", string(head))
-		}
+		//headerBytesMul, err := tx.FetchBlockHeaders(blockHashs)
+		//if err != nil {
+		//	fmt.Println("block 2:", string(head))
+		//	return err
+		//}
 
 		// As documented, all data fetched from the database is only
 		// valid during a database transaction in order to support
@@ -128,13 +128,13 @@ func TestFFldb_two() {
 		loadedBlockBytes = make([]byte, len(blockBytes))
 		copy(loadedBlockBytes, blockBytes)
 
-		md := tx.Metadata()
-		cursor := md.Cursor()
-		if cursor != nil {
-			cursor.First()
-			fmt.Println("key:", string(cursor.Key()))
-			fmt.Println("value:", string(cursor.Value()))
-		}
+		// md := tx.Metadata()
+		// cursor := md.Cursor()
+		// if cursor != nil {
+		// 	cursor.First()
+		// 	fmt.Println("key:", string(cursor.Key()))
+		// 	fmt.Println("value:", string(cursor.Value()))
+		// }
 
 		return nil
 	})

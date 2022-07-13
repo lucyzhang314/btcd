@@ -5,9 +5,9 @@
 package ffldb
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,11 +20,11 @@ import (
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/database/internal/treap"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/comparer"
-	ldberrors "github.com/syndtr/goleveldb/leveldb/errors"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
+
+	// "github.com/syndtr/goleveldb/leveldb"
+
+	// ldberrors "github.com/syndtr/goleveldb/leveldb/errors"
+	// "github.com/syndtr/goleveldb/leveldb/iterator"
 
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
@@ -144,18 +144,18 @@ func convertErr(desc string, ldbErr error) database.Error {
 
 	switch {
 	// Database corruption errors.
-	case ldberrors.IsCorrupted(ldbErr):
-		code = database.ErrCorruption
+	// case ldberrors.IsCorrupted(ldbErr):
+	// 	code = database.ErrCorruption
 
 	// Database open/create errors.
-	case ldbErr == leveldb.ErrClosed:
-		code = database.ErrDbNotOpen
+	// case ldbErr == leveldb.ErrClosed:
+	// 	code = database.ErrDbNotOpen
 
-	// Transaction errors.
-	case ldbErr == leveldb.ErrSnapshotReleased:
-		code = database.ErrTxClosed
-	case ldbErr == leveldb.ErrIterReleased:
-		code = database.ErrTxClosed
+	// // Transaction errors.
+	// case ldbErr == leveldb.ErrSnapshotReleased:
+	// 	code = database.ErrTxClosed
+	// case ldbErr == leveldb.ErrIterReleased:
+	// 	code = database.ErrTxClosed
 	}
 
 	return database.Error{ErrorCode: code, Description: desc, Err: ldbErr}
@@ -173,10 +173,11 @@ func copySlice(slice []byte) []byte {
 // cursor is an internal type used to represent a cursor over key/value pairs
 // and nested buckets of a bucket and implements the database.Cursor interface.
 type cursor struct {
-	bucket      *bucket
-	dbIter      iterator.Iterator
-	pendingIter iterator.Iterator
-	currentIter iterator.Iterator
+	bucket    *bucket
+	mdbCursor kv.RwCursor
+	// dbIter      iterator.Iterator
+	// pendingIter iterator.Iterator
+	// currentIter iterator.Iterator
 }
 
 // Enforce cursor implements the database.Cursor interface.
@@ -211,19 +212,20 @@ func (c *cursor) Delete() error {
 	}
 
 	// Error if the cursor is exhausted.
-	if c.currentIter == nil {
+	if c.mdbCursor == nil {
 		str := "cursor is exhausted"
 		return makeDbErr(database.ErrIncompatibleValue, str, nil)
 	}
+	c.mdbCursor.DeleteCurrent()
 
 	// Do not allow buckets to be deleted via the cursor.
-	key := c.currentIter.Key()
-	if bytes.HasPrefix(key, bucketIndexPrefix) {
-		str := "buckets may not be deleted from a cursor"
-		return makeDbErr(database.ErrIncompatibleValue, str, nil)
-	}
+	// key := c.currentIter.Key()
+	// if bytes.HasPrefix(key, bucketIndexPrefix) {
+	// 	str := "buckets may not be deleted from a cursor"
+	// 	return makeDbErr(database.ErrIncompatibleValue, str, nil)
+	// }
 
-	c.bucket.tx.deleteKey(copySlice(key), true)
+	// c.bucket.tx.deleteKey(copySlice(key), true)
 	return nil
 }
 
@@ -231,24 +233,24 @@ func (c *cursor) Delete() error {
 // that are being updated by the transaction.  The forwards flag indicates the
 // direction the cursor is moving.
 func (c *cursor) skipPendingUpdates(forwards bool) {
-	for c.dbIter.Valid() {
-		var skip bool
-		key := c.dbIter.Key()
-		if c.bucket.tx.pendingRemove.Has(key) {
-			skip = true
-		} else if c.bucket.tx.pendingKeys.Has(key) {
-			skip = true
-		}
-		if !skip {
-			break
-		}
+	// for c.dbIter.Valid() {
+	// 	var skip bool
+	// 	key := c.dbIter.Key()
+	// 	if c.bucket.tx.pendingRemove.Has(key) {
+	// 		skip = true
+	// 	} else if c.bucket.tx.pendingKeys.Has(key) {
+	// 		skip = true
+	// 	}
+	// 	if !skip {
+	// 		break
+	// 	}
 
-		if forwards {
-			c.dbIter.Next()
-		} else {
-			c.dbIter.Prev()
-		}
-	}
+	// 	if forwards {
+	// 		c.dbIter.Next()
+	// 	} else {
+	// 		c.dbIter.Prev()
+	// 	}
+	// }
 }
 
 // chooseIterator first skips any entries in the database iterator that are
@@ -258,38 +260,38 @@ func (c *cursor) skipPendingUpdates(forwards bool) {
 // moved forwards and both iterators are valid, the iterator with the smaller
 // key is chosen and vice versa when the cursor is being moved backwards.
 func (c *cursor) chooseIterator(forwards bool) bool {
-	// Skip any keys at the current database iterator position that are
-	// being updated by the transaction.
-	c.skipPendingUpdates(forwards)
+	// // Skip any keys at the current database iterator position that are
+	// // being updated by the transaction.
+	// c.skipPendingUpdates(forwards)
 
-	// When both iterators are exhausted, the cursor is exhausted too.
-	if !c.dbIter.Valid() && !c.pendingIter.Valid() {
-		c.currentIter = nil
-		return false
-	}
+	// // When both iterators are exhausted, the cursor is exhausted too.
+	// if !c.dbIter.Valid() && !c.pendingIter.Valid() {
+	// 	c.currentIter = nil
+	// 	return false
+	// }
 
-	// Choose the database iterator when the pending keys iterator is
-	// exhausted.
-	if !c.pendingIter.Valid() {
-		c.currentIter = c.dbIter
-		return true
-	}
+	// // Choose the database iterator when the pending keys iterator is
+	// // exhausted.
+	// if !c.pendingIter.Valid() {
+	// 	c.currentIter = c.dbIter
+	// 	return true
+	// }
 
-	// Choose the pending keys iterator when the database iterator is
-	// exhausted.
-	if !c.dbIter.Valid() {
-		c.currentIter = c.pendingIter
-		return true
-	}
+	// // Choose the pending keys iterator when the database iterator is
+	// // exhausted.
+	// if !c.dbIter.Valid() {
+	// 	c.currentIter = c.pendingIter
+	// 	return true
+	// }
 
-	// Both iterators are valid, so choose the iterator with either the
-	// smaller or larger key depending on the forwards flag.
-	compare := bytes.Compare(c.dbIter.Key(), c.pendingIter.Key())
-	if (forwards && compare > 0) || (!forwards && compare < 0) {
-		c.currentIter = c.pendingIter
-	} else {
-		c.currentIter = c.dbIter
-	}
+	// // Both iterators are valid, so choose the iterator with either the
+	// // smaller or larger key depending on the forwards flag.
+	// compare := bytes.Compare(c.dbIter.Key(), c.pendingIter.Key())
+	// if (forwards && compare > 0) || (!forwards && compare < 0) {
+	// 	c.currentIter = c.pendingIter
+	// } else {
+	// 	c.currentIter = c.dbIter
+	// }
 	return true
 }
 
@@ -305,9 +307,17 @@ func (c *cursor) First() bool {
 
 	// Seek to the first key in both the database and pending iterators and
 	// choose the iterator that is both valid and has the smaller key.
-	c.dbIter.First()
-	c.pendingIter.First()
-	return c.chooseIterator(true)
+	// c.dbIter.First()
+	// c.pendingIter.First()
+	// return c.chooseIterator(true)
+
+	if c.mdbCursor != nil {
+		_, _, err := c.mdbCursor.First()
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Last positions the cursor at the last key/value pair and returns whether or
@@ -322,9 +332,16 @@ func (c *cursor) Last() bool {
 
 	// Seek to the last key in both the database and pending iterators and
 	// choose the iterator that is both valid and has the larger key.
-	c.dbIter.Last()
-	c.pendingIter.Last()
-	return c.chooseIterator(false)
+	// c.dbIter.Last()
+	// c.pendingIter.Last()
+	// return c.chooseIterator(false)
+	if c.mdbCursor != nil {
+		_, _, err := c.mdbCursor.Last()
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Next moves the cursor one key/value pair forward and returns whether or not
@@ -338,14 +355,21 @@ func (c *cursor) Next() bool {
 	}
 
 	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return false
-	}
+	// if c.currentIter == nil {
+	// 	return false
+	// }
 
-	// Move the current iterator to the next entry and choose the iterator
-	// that is both valid and has the smaller key.
-	c.currentIter.Next()
-	return c.chooseIterator(true)
+	// // Move the current iterator to the next entry and choose the iterator
+	// // that is both valid and has the smaller key.
+	// c.currentIter.Next()
+	// return c.chooseIterator(true)
+	if c.mdbCursor != nil {
+		_, _, err := c.mdbCursor.Next()
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Prev moves the cursor one key/value pair backward and returns whether or not
@@ -358,15 +382,22 @@ func (c *cursor) Prev() bool {
 		return false
 	}
 
-	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return false
-	}
+	// // Nothing to return if cursor is exhausted.
+	// if c.currentIter == nil {
+	// 	return false
+	// }
 
-	// Move the current iterator to the previous entry and choose the
-	// iterator that is both valid and has the larger key.
-	c.currentIter.Prev()
-	return c.chooseIterator(false)
+	// // Move the current iterator to the previous entry and choose the
+	// // iterator that is both valid and has the larger key.
+	// c.currentIter.Prev()
+	// return c.chooseIterator(false)
+	if c.mdbCursor != nil {
+		_, _, err := c.mdbCursor.Prev()
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Seek positions the cursor at the first key/value pair that is greater than or
@@ -381,63 +412,80 @@ func (c *cursor) Seek(seek []byte) bool {
 
 	// Seek to the provided key in both the database and pending iterators
 	// then choose the iterator that is both valid and has the larger key.
-	seekKey := bucketizedKey(c.bucket.id, seek)
-	c.dbIter.Seek(seekKey)
-	c.pendingIter.Seek(seekKey)
-	return c.chooseIterator(true)
+	// seekKey := bucketizedKey(c.bucket.id, seek)
+	// c.dbIter.Seek(seekKey)
+	// c.pendingIter.Seek(seekKey)
+	// return c.chooseIterator(true)
+	if c.mdbCursor != nil {
+		_, _, err := c.mdbCursor.Seek(seek)
+		if err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // rawKey returns the current key the cursor is pointing to without stripping
 // the current bucket prefix or bucket index prefix.
 func (c *cursor) rawKey() []byte {
 	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return nil
-	}
+	// if c.currentIter == nil {
+	// 	return nil
+	// }
 
-	return copySlice(c.currentIter.Key())
+	// return copySlice(c.currentIter.Key())
+	return c.Key()
 }
 
 // Key returns the current key the cursor is pointing to.
 //
 // This function is part of the database.Cursor interface implementation.
 func (c *cursor) Key() []byte {
-	// Ensure transaction state is valid.
-	if err := c.bucket.tx.checkClosed(); err != nil {
-		return nil
+	// // Ensure transaction state is valid.
+	// if err := c.bucket.tx.checkClosed(); err != nil {
+	// 	return nil
+	// }
+
+	// // Nothing to return if cursor is exhausted.
+	// if c.currentIter == nil {
+	// 	return nil
+	// }
+
+	// // Slice out the actual key name and make a copy since it is no longer
+	// // valid after iterating to the next item.
+	// //
+	// // The key is after the bucket index prefix and parent ID when the
+	// // cursor is pointing to a nested bucket.
+	// key := c.currentIter.Key()
+	// if bytes.HasPrefix(key, bucketIndexPrefix) {
+	// 	key = key[len(bucketIndexPrefix)+4:]
+	// 	return copySlice(key)
+	// }
+
+	// // The key is after the bucket ID when the cursor is pointing to a
+	// // normal entry.
+	// key = key[len(c.bucket.id):]
+	// return copySlice(key)
+	if c.mdbCursor != nil {
+		key, _, err := c.mdbCursor.Current()
+		if err == nil {
+			return copySlice(key)
+		}
 	}
 
-	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return nil
-	}
-
-	// Slice out the actual key name and make a copy since it is no longer
-	// valid after iterating to the next item.
-	//
-	// The key is after the bucket index prefix and parent ID when the
-	// cursor is pointing to a nested bucket.
-	key := c.currentIter.Key()
-	if bytes.HasPrefix(key, bucketIndexPrefix) {
-		key = key[len(bucketIndexPrefix)+4:]
-		return copySlice(key)
-	}
-
-	// The key is after the bucket ID when the cursor is pointing to a
-	// normal entry.
-	key = key[len(c.bucket.id):]
-	return copySlice(key)
+	return []byte("")
 }
 
 // rawValue returns the current value the cursor is pointing to without
 // stripping without filtering bucket index values.
 func (c *cursor) rawValue() []byte {
-	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return nil
-	}
+	// // Nothing to return if cursor is exhausted.
+	// if c.currentIter == nil {
+	// 	return nil
+	// }
 
-	return copySlice(c.currentIter.Value())
+	// return copySlice(c.currentIter.Value())
+	return c.Value()
 }
 
 // Value returns the current value the cursor is pointing to.  This will be nil
@@ -446,22 +494,31 @@ func (c *cursor) rawValue() []byte {
 // This function is part of the database.Cursor interface implementation.
 func (c *cursor) Value() []byte {
 	// Ensure transaction state is valid.
-	if err := c.bucket.tx.checkClosed(); err != nil {
-		return nil
+	// if err := c.bucket.tx.checkClosed(); err != nil {
+	// 	return nil
+	// }
+
+	// // Nothing to return if cursor is exhausted.
+	// if c.currentIter == nil {
+	// 	return nil
+	// }
+
+	// // Return nil for the value when the cursor is pointing to a nested
+	// // bucket.
+	// if bytes.HasPrefix(c.currentIter.Key(), bucketIndexPrefix) {
+	// 	return nil
+	// }
+
+	// return copySlice(c.currentIter.Value())
+
+	if c.mdbCursor != nil {
+		_, value, err := c.mdbCursor.Current()
+		if err == nil {
+			return copySlice(value)
+		}
 	}
 
-	// Nothing to return if cursor is exhausted.
-	if c.currentIter == nil {
-		return nil
-	}
-
-	// Return nil for the value when the cursor is pointing to a nested
-	// bucket.
-	if bytes.HasPrefix(c.currentIter.Key(), bucketIndexPrefix) {
-		return nil
-	}
-
-	return copySlice(c.currentIter.Value())
+	return []byte("")
 }
 
 // cursorType defines the type of cursor to create.
@@ -484,8 +541,11 @@ const (
 // cursorFinalizer is either invoked when a cursor is being garbage collected or
 // called manually to ensure the underlying cursor iterators are released.
 func cursorFinalizer(c *cursor) {
-	c.dbIter.Release()
-	c.pendingIter.Release()
+	// c.dbIter.Release()
+	// c.pendingIter.Release()
+	if c.mdbCursor != nil {
+		c.mdbCursor.Close()
+	}
 }
 
 // newCursor returns a new cursor for the given bucket, bucket ID, and cursor
@@ -494,69 +554,82 @@ func cursorFinalizer(c *cursor) {
 // NOTE: The caller is responsible for calling the cursorFinalizer function on
 // the returned cursor.
 func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
-	var dbIter, pendingIter iterator.Iterator
-	switch cursorTyp {
-	case ctKeys:
-		keyRange := util.BytesPrefix(bucketID)
-		dbIter = b.tx.snapshot.NewIterator(keyRange)
-		pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
-		pendingIter = pendingKeyIter
+	// var dbIter, pendingIter iterator.Iterator
+	// switch cursorTyp {
+	// case ctKeys:
+	// 	keyRange := util.BytesPrefix(bucketID)
+	// 	dbIter = b.tx.snapshot.NewIterator(keyRange)
+	// 	pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
+	// 	pendingIter = pendingKeyIter
 
-	case ctBuckets:
-		// The serialized bucket index key format is:
-		//   <bucketindexprefix><parentbucketid><bucketname>
+	// case ctBuckets:
+	// 	// The serialized bucket index key format is:
+	// 	//   <bucketindexprefix><parentbucketid><bucketname>
 
-		// Create an iterator for the both the database and the pending
-		// keys which are prefixed by the bucket index identifier and
-		// the provided bucket ID.
-		prefix := make([]byte, len(bucketIndexPrefix)+4)
-		copy(prefix, bucketIndexPrefix)
-		copy(prefix[len(bucketIndexPrefix):], bucketID)
-		bucketRange := util.BytesPrefix(prefix)
+	// 	// Create an iterator for the both the database and the pending
+	// 	// keys which are prefixed by the bucket index identifier and
+	// 	// the provided bucket ID.
+	// 	prefix := make([]byte, len(bucketIndexPrefix)+4)
+	// 	copy(prefix, bucketIndexPrefix)
+	// 	copy(prefix[len(bucketIndexPrefix):], bucketID)
+	// 	bucketRange := util.BytesPrefix(prefix)
 
-		dbIter = b.tx.snapshot.NewIterator(bucketRange)
-		pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
-		pendingIter = pendingBucketIter
+	// 	dbIter = b.tx.snapshot.NewIterator(bucketRange)
+	// 	pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
+	// 	pendingIter = pendingBucketIter
 
-	case ctFull:
-		fallthrough
-	default:
-		// The serialized bucket index key format is:
-		//   <bucketindexprefix><parentbucketid><bucketname>
-		prefix := make([]byte, len(bucketIndexPrefix)+4)
-		copy(prefix, bucketIndexPrefix)
-		copy(prefix[len(bucketIndexPrefix):], bucketID)
-		bucketRange := util.BytesPrefix(prefix)
-		keyRange := util.BytesPrefix(bucketID)
+	// case ctFull:
+	// 	fallthrough
+	// default:
+	// 	// The serialized bucket index key format is:
+	// 	//   <bucketindexprefix><parentbucketid><bucketname>
+	// 	prefix := make([]byte, len(bucketIndexPrefix)+4)
+	// 	copy(prefix, bucketIndexPrefix)
+	// 	copy(prefix[len(bucketIndexPrefix):], bucketID)
+	// 	bucketRange := util.BytesPrefix(prefix)
+	// 	keyRange := util.BytesPrefix(bucketID)
 
-		// Since both keys and buckets are needed from the database,
-		// create an individual iterator for each prefix and then create
-		// a merged iterator from them.
-		dbKeyIter := b.tx.snapshot.NewIterator(keyRange)
-		dbBucketIter := b.tx.snapshot.NewIterator(bucketRange)
-		iters := []iterator.Iterator{dbKeyIter, dbBucketIter}
-		dbIter = iterator.NewMergedIterator(iters,
-			comparer.DefaultComparer, true)
+	// 	// Since both keys and buckets are needed from the database,
+	// 	// create an individual iterator for each prefix and then create
+	// 	// a merged iterator from them.
+	// 	dbKeyIter := b.tx.snapshot.NewIterator(keyRange)
+	// 	dbBucketIter := b.tx.snapshot.NewIterator(bucketRange)
+	// 	iters := []iterator.Iterator{dbKeyIter, dbBucketIter}
+	// 	dbIter = iterator.NewMergedIterator(iters,
+	// 		comparer.DefaultComparer, true)
 
-		// Since both keys and buckets are needed from the pending keys,
-		// create an individual iterator for each prefix and then create
-		// a merged iterator from them.
-		pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
-		pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
-		iters = []iterator.Iterator{pendingKeyIter, pendingBucketIter}
-		pendingIter = iterator.NewMergedIterator(iters,
-			comparer.DefaultComparer, true)
+	// 	// Since both keys and buckets are needed from the pending keys,
+	// 	// create an individual iterator for each prefix and then create
+	// 	// a merged iterator from them.
+	// 	pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
+	// 	pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
+	// 	iters = []iterator.Iterator{pendingKeyIter, pendingBucketIter}
+	// 	pendingIter = iterator.NewMergedIterator(iters,
+	// 		comparer.DefaultComparer, true)
+	// }
+
+	// return &cursor{bucket: b, dbIter: dbIter, pendingIter: pendingIter}
+	// // Create the cursor using the iterators.
+
+	mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
+	if err != nil {
+		// return convertErr("failed to open ldb transaction", err)
+		return nil
 	}
-
-	// Create the cursor using the iterators.
-	return &cursor{bucket: b, dbIter: dbIter, pendingIter: pendingIter}
+	csr, err := mdbTx.RwCursor(string(bucketID))
+	if err != nil {
+		// return convertErr("failed to open ldb transaction", err)
+		return nil
+	}
+	return &cursor{bucket: b, mdbCursor: csr}
 }
 
 // bucket is an internal type used to represent a collection of key/value pairs
 // and implements the database.Bucket interface.
 type bucket struct {
-	tx *transaction
-	id [4]byte
+	tx  *transaction
+	key []byte
+	id  [4]byte
 }
 
 // Enforce bucket implements the database.Bucket interface.
@@ -599,14 +672,25 @@ func (b *bucket) Bucket(key []byte) database.Bucket {
 
 	// Attempt to fetch the ID for the child bucket.  The bucket does not
 	// exist if the bucket index entry does not exist.
-	childID := b.tx.fetchKey(bucketIndexKey(b.id, key))
-	if childID == nil {
+	// childID := b.tx.fetchKey(bucketIndexKey(b.id, key))
+	// if childID == nil {
+	// 	return nil
+	// }
+
+	// childBucket := &bucket{tx: b.tx}
+	// copy(childBucket.id[:], childID)
+	// return childBucket
+
+	mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
+	if err != nil {
 		return nil
 	}
+	existing, err := mdbTx.ExistsBucket(string(key))
+	if (err == nil) && existing {
+		return &bucket{tx: b.tx, key: key}
+	}
 
-	childBucket := &bucket{tx: b.tx}
-	copy(childBucket.id[:], childID)
-	return childBucket
+	return nil
 }
 
 // CreateBucket creates and returns a new nested bucket with the given key.
@@ -639,31 +723,36 @@ func (b *bucket) CreateBucket(key []byte) (database.Bucket, error) {
 	}
 
 	// Ensure bucket does not already exist.
-	bidxKey := bucketIndexKey(b.id, key)
-	if b.tx.hasKey(bidxKey) {
+	// bidxKey := bucketIndexKey(b.id, key)
+	// if b.tx.hasKey(bidxKey) {
+	if b.tx.hasBucket(key) {
 		str := "bucket already exists"
 		return nil, makeDbErr(database.ErrBucketExists, str, nil)
 	}
 
-	// Find the appropriate next bucket ID to use for the new bucket.  In
-	// the case of the special internal block index, keep the fixed ID.
-	var childID [4]byte
-	if b.id == metadataBucketID && bytes.Equal(key, blockIdxBucketName) {
-		childID = blockIdxBucketID
-	} else {
-		var err error
-		childID, err = b.tx.nextBucketID()
-		if err != nil {
-			return nil, err
-		}
+	if b.tx.createBucket(key) {
+		return &bucket{tx: b.tx, key: key}, nil
 	}
 
-	// Add the new bucket to the bucket index.
-	if err := b.tx.putKey(bidxKey, childID[:]); err != nil {
-		str := fmt.Sprintf("failed to create bucket with key %q", key)
-		return nil, convertErr(str, err)
-	}
-	return &bucket{tx: b.tx, id: childID}, nil
+	return nil, errors.New("create bucket failed")
+	// Find the appropriate next bucket ID to use for the new bucket.  In
+	// the case of the special internal block index, keep the fixed ID.
+	// var childID [4]byte
+	// if b.id == metadataBucketID && bytes.Equal(key, blockIdxBucketName) {
+	// 	childID = blockIdxBucketID
+	// } else {
+	// 	var err error
+	// 	childID, err = b.tx.nextBucketID()
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// }
+
+	// // Add the new bucket to the bucket index.
+	// if err := b.tx.putKey(bidxKey, childID[:]); err != nil {
+	// 	str := fmt.Sprintf("failed to create bucket with key %q", key)
+	// 	return nil, convertErr(str, err)
+	// }
 }
 
 // CreateBucketIfNotExists creates and returns a new nested bucket with the
@@ -683,7 +772,7 @@ func (b *bucket) CreateBucketIfNotExists(key []byte) (database.Bucket, error) {
 		return nil, err
 	}
 
-	// Ensure the transaction is writable.
+	// // Ensure the transaction is writable.
 	if !b.tx.writable {
 		str := "create bucket requires a writable database transaction"
 		return nil, makeDbErr(database.ErrTxNotWritable, str, nil)
@@ -716,47 +805,49 @@ func (b *bucket) DeleteBucket(key []byte) error {
 		return makeDbErr(database.ErrTxNotWritable, str, nil)
 	}
 
-	// Attempt to fetch the ID for the child bucket.  The bucket does not
-	// exist if the bucket index entry does not exist.  In the case of the
-	// special internal block index, keep the fixed ID.
-	bidxKey := bucketIndexKey(b.id, key)
-	childID := b.tx.fetchKey(bidxKey)
-	if childID == nil {
-		str := fmt.Sprintf("bucket %q does not exist", key)
-		return makeDbErr(database.ErrBucketNotFound, str, nil)
-	}
+	return b.tx.deleteBucket(key)
 
-	// Remove all nested buckets and their keys.
-	childIDs := [][]byte{childID}
-	for len(childIDs) > 0 {
-		childID = childIDs[len(childIDs)-1]
-		childIDs = childIDs[:len(childIDs)-1]
+	// // Attempt to fetch the ID for the child bucket.  The bucket does not
+	// // exist if the bucket index entry does not exist.  In the case of the
+	// // special internal block index, keep the fixed ID.
+	// bidxKey := bucketIndexKey(b.id, key)
+	// childID := b.tx.fetchKey(bidxKey)
+	// if childID == nil {
+	// 	str := fmt.Sprintf("bucket %q does not exist", key)
+	// 	return makeDbErr(database.ErrBucketNotFound, str, nil)
+	// }
 
-		// Delete all keys in the nested bucket.
-		keyCursor := newCursor(b, childID, ctKeys)
-		for ok := keyCursor.First(); ok; ok = keyCursor.Next() {
-			b.tx.deleteKey(keyCursor.rawKey(), false)
-		}
-		cursorFinalizer(keyCursor)
+	// // Remove all nested buckets and their keys.
+	// childIDs := [][]byte{childID}
+	// for len(childIDs) > 0 {
+	// 	childID = childIDs[len(childIDs)-1]
+	// 	childIDs = childIDs[:len(childIDs)-1]
 
-		// Iterate through all nested buckets.
-		bucketCursor := newCursor(b, childID, ctBuckets)
-		for ok := bucketCursor.First(); ok; ok = bucketCursor.Next() {
-			// Push the id of the nested bucket onto the stack for
-			// the next iteration.
-			childID := bucketCursor.rawValue()
-			childIDs = append(childIDs, childID)
+	// 	// Delete all keys in the nested bucket.
+	// 	keyCursor := newCursor(b, childID, ctKeys)
+	// 	for ok := keyCursor.First(); ok; ok = keyCursor.Next() {
+	// 		b.tx.deleteKey(keyCursor.rawKey(), false)
+	// 	}
+	// 	cursorFinalizer(keyCursor)
 
-			// Remove the nested bucket from the bucket index.
-			b.tx.deleteKey(bucketCursor.rawKey(), false)
-		}
-		cursorFinalizer(bucketCursor)
-	}
+	// 	// Iterate through all nested buckets.
+	// 	bucketCursor := newCursor(b, childID, ctBuckets)
+	// 	for ok := bucketCursor.First(); ok; ok = bucketCursor.Next() {
+	// 		// Push the id of the nested bucket onto the stack for
+	// 		// the next iteration.
+	// 		childID := bucketCursor.rawValue()
+	// 		childIDs = append(childIDs, childID)
 
-	// Remove the nested bucket from the bucket index.  Any buckets nested
-	// under it were already removed above.
-	b.tx.deleteKey(bidxKey, true)
-	return nil
+	// 		// Remove the nested bucket from the bucket index.
+	// 		b.tx.deleteKey(bucketCursor.rawKey(), false)
+	// 	}
+	// 	cursorFinalizer(bucketCursor)
+	// }
+
+	// // Remove the nested bucket from the bucket index.  Any buckets nested
+	// // under it were already removed above.
+	// b.tx.deleteKey(bidxKey, true)
+	// return nil
 }
 
 // Cursor returns a new cursor, allowing for iteration over the bucket's
@@ -1026,6 +1117,49 @@ func (tx *transaction) checkClosed() error {
 	}
 
 	return nil
+}
+
+func (tx *transaction) hasBucket(key []byte) bool {
+	mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+	if err != nil {
+		return false
+	}
+	existing, err := mdbtx.ExistsBucket(string(key))
+	return (err == nil) && existing
+}
+
+func (tx *transaction) createBucket(key []byte) bool {
+	// When the transaction is writable, check the pending transaction
+	// state first.
+	if tx.writable {
+		mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+		if err != nil {
+			return false
+		}
+		// existing, err := mdbtx.ExistsBucket(string(key))
+		err = mdbtx.CreateBucket(string(key))
+		if err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (tx *transaction) deleteBucket(key []byte) error {
+	if tx.writable {
+		mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+		if err != nil {
+			return err
+		}
+		existing, err := mdbtx.ExistsBucket(string(key))
+		if (err == nil) && existing {
+			return mdbtx.DropBucket(string(key))
+
+		}
+	}
+
+	return errors.New("delete bucket failed")
 }
 
 // hasKey returns whether or not the provided key exists in the database while
@@ -1983,16 +2117,17 @@ func fileExists(name string) bool {
 // 	return nil
 // }
 func initMDBX(mdb kv.RwDB) error {
-	// Start a leveldb transaction.
-	mdbTx, err := mdb.BeginRw(context.Background())
+	err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
+		// NOTE:
+		// All buckets in MDBX must be created at here
+		// otherwise, it won't work
+		err := tx.CreateBucket(mdbxRootBucket)
+		return err
+	})
+
 	if err != nil {
 		return convertErr("failed to open ldb transaction", err)
 	}
-	err = mdbTx.CreateBucket(mdbxRootBucket)
-	if err != nil {
-		return convertErr("failed to create bucket", err)
-	}
-
 	return nil
 }
 
@@ -2031,7 +2166,12 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 
 	// --------- for mdbx
 	logger := mdbxlog.New()
-	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).MustOpen()
+	//mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).MustOpen()
+	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+		return kv.TableCfg{
+			mdbxRootBucket: kv.TableCfgItem{Flags: kv.Default},
+		}
+	}).MustOpen()
 	// --------- for mdbx
 
 	// Create the block store which includes scanning the existing flat

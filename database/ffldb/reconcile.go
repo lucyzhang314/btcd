@@ -62,15 +62,19 @@ func reconcileDB(pdb *db, create bool) (database.DB, error) {
 	// Load the current write cursor position from the metadata.
 	var curFileNum, curOffset uint32
 	err := pdb.View(func(tx database.Tx) error {
-		writeRow := tx.Metadata().Get(writeLocKeyName)
-		if writeRow == nil {
-			str := "write cursor does not exist"
-			return makeDbErr(database.ErrCorruption, str, nil)
-		}
+		//writeRow := tx.Metadata().Get(writeLocKeyName)
+		//if writeRow == nil {
+		//	str := "write cursor does not exist"
+		//	return makeDbErr(database.ErrCorruption, str, nil)
+		//}
+		//
+		//var err error
+		//curFileNum, curOffset, err = deserializeWriteRow(writeRow)
+		//return err
 
-		var err error
-		curFileNum, curOffset, err = deserializeWriteRow(writeRow)
-		return err
+		// temporary code, for skip leveldb snapshot feature
+		curFileNum, curOffset = 0, 0
+		return nil
 	})
 	if err != nil {
 		return nil, err
