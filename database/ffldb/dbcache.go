@@ -45,9 +45,9 @@ const (
 
 // ldbCacheIter wraps a treap iterator to provide the additional functionality
 // needed to satisfy the leveldb iterator.Iterator interface.
-type ldbCacheIter struct {
-	*treap.Iterator
-}
+// type ldbCacheIter struct {
+// 	*treap.Iterator
+// }
 
 // Enforce ldbCacheIterator implements the leveldb iterator.Iterator interface.
 // var _ iterator.Iterator = (*ldbCacheIter)(nil)
@@ -56,9 +56,9 @@ type ldbCacheIter struct {
 // errors for this memory-only structure.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-func (iter *ldbCacheIter) Error() error {
-	return nil
-}
+// func (iter *ldbCacheIter) Error() error {
+// 	return nil
+// }
 
 // newLdbCacheIter creates a new treap iterator for the given slice against the
 // pending keys for the passed cache snapshot and returns it wrapped in an
