@@ -453,31 +453,6 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 // 	return nil
 // }
 func (c *dbCache) updateDB(bucketName string, fn func(mdbTx kv.RwTx) error) error {
-	// Start a leveldb transaction.
-	//mdbTx, err := c.mdb.BeginRw(context.Background())
-	//if err != nil {
-	//	return convertErr("failed to open ldb transaction", err)
-	//}
-	//existing, err := mdbTx.ExistsBucket(mdbxRootBucket)
-	//if err != nil {
-	//	return convertErr("failed to create bucket", err)
-	//}
-	//if !existing {
-	//	err = mdbTx.CreateBucket(mdbxRootBucket)
-	//	if err != nil {
-	//		return convertErr("failed to create bucket", err)
-	//	}
-	//}
-	//
-	//if err := fn(mdbxRootBucket, mdbTx); err != nil {
-	//	mdbTx.Rollback()
-	//	return err
-	//}
-	//
-	//// Commit the leveldb transaction and convert any errors as needed.
-	//if err := mdbTx.Commit(); err != nil {
-	//	return convertErr("failed to commit leveldb transaction", err)
-	//}
 
 	c.mdb.Update(context.Background(), func(tx kv.RwTx) error {
 		existing, _ := tx.ExistsBucket(bucketName)
@@ -510,34 +485,6 @@ type TreapForEacher interface {
 // commitTreaps atomically commits all of the passed pending add/update/remove
 // updates to the underlying database.
 func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error {
-	// Perform all leveldb updates using an atomic transaction.
-	// return c.updateDB(func(ldbTx *leveldb.Transaction) error {
-	// 	var innerErr error
-	// 	pendingKeys.ForEach(func(k, v []byte) bool {
-	// 		if dbErr := ldbTx.Put(k, v, nil); dbErr != nil {
-	// 			str := fmt.Sprintf("failed to put key %q to "+
-	// 				"ldb transaction", k)
-	// 			innerErr = convertErr(str, dbErr)
-	// 			return false
-	// 		}
-	// 		return true
-	// 	})
-	// 	if innerErr != nil {
-	// 		return innerErr
-	// 	}
-
-	// 	pendingRemove.ForEach(func(k, v []byte) bool {
-	// 		if dbErr := ldbTx.Delete(k, nil); dbErr != nil {
-	// 			str := fmt.Sprintf("failed to delete "+
-	// 				"key %q from ldb transaction",
-	// 				k)
-	// 			innerErr = convertErr(str, dbErr)
-	// 			return false
-	// 		}
-	// 		return true
-	// 	})
-	// 	return innerErr
-	// })
 
 	bucket := mdbxRootBucket
 
@@ -717,21 +664,14 @@ func (c *dbCache) Close() error {
 		// Even if there is an error while flushing, attempt to close
 		// the underlying database.  The error is ignored since it would
 		// mask the flush error.
-		/* comments here for leveldb
-		_ = c.ldb.Close()
-		*/
-
 		c.mdb.Close()
+		c.mdb = nil
 
 		return err
 	}
 
-	// Close the underlying leveldb database.
-	// if err := c.ldb.Close(); err != nil {
-	// 	str := "failed to close underlying leveldb database"
-	// 	return convertErr(str, err)
-	// }
 	c.mdb.Close()
+	c.mdb = nil
 
 	return nil
 }
@@ -740,25 +680,8 @@ func (c *dbCache) Close() error {
 // leveldb instance.  The cache will be flushed to leveldb when the max size
 // exceeds the provided value or it has been longer than the provided interval
 // since the last flush.
-
-/* comments here for leveldb
-func newDbCache(ldb *leveldb.DB, store *blockStore, maxSize uint64, flushIntervalSecs uint32) *dbCache {
-	return &dbCache{
-		ldb:           ldb,
-		store:         store,
-		maxSize:       maxSize,
-		flushInterval: time.Second * time.Duration(flushIntervalSecs),
-		lastFlush:     time.Now(),
-		cachedKeys:    treap.NewImmutable(),
-		cachedRemove:  treap.NewImmutable(),
-	}
-}
-*/
-
-// --------- for mdbx
 func newDbCache(mdb kv.RwDB, store *blockStore, maxSize uint64, flushIntervalSecs uint32) *dbCache {
 	return &dbCache{
-		// ldb:           ldb,
 		mdb:           mdb,
 		store:         store,
 		maxSize:       maxSize,
@@ -768,5 +691,3 @@ func newDbCache(mdb kv.RwDB, store *blockStore, maxSize uint64, flushIntervalSec
 		cachedRemove:  treap.NewImmutable(),
 	}
 }
-
-// --------- for mdbx

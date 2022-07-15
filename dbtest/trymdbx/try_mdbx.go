@@ -16,8 +16,8 @@ func TryMDBX() {
 	//db_put()
 	//db_read()
 	//db_put2()
-	// db_read2()
-	db_test_bucket()
+	db_read2()
+	// db_test_bucket()
 }
 
 var (

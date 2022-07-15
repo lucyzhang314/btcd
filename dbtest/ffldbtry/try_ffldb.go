@@ -26,52 +26,21 @@ var (
 
 func TryFfldb() {
 	var err error
-	dbpath := filepath.Join(os.TempDir(), "testdrvDe_mdbx")
-	// dbpath := filepath.Join(os.TempDir(), "testDrvDe_leveldb")
+	// dbpath := filepath.Join(os.TempDir(), "testdrvDe_mdbx")
+	dbpath := filepath.Join(os.TempDir(), "testDrvDe_leveldb")
 	db, err = database.Create("ffldb", dbpath, wire.MainNet)
 	if err != nil {
 		fmt.Println("create database error:", err)
 		return
 	}
 
-	// TestFFldb_bucket()
-	TestFFldb_TX()
+	TestFFldb_bucket()
+	// TestFFldb_TX()
 	//TestFFldb_3()
 	//TestFFldb_4()
 
 	//defer os.RemoveAll(dbpath)
 	defer db.Close()
-}
-
-func TestFFldb_two() {
-	// err = db.Update(func(tx database.Tx) error {
-	// 	md := tx.Metadata()
-	// 	err := md.Put(key, value)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	retrivedValue := md.Get(key)
-	// 	if !bytes.Equal(retrivedValue, value) {
-	// 		return fmt.Errorf("not equal")
-	// 	}
-
-	// 	return nil
-	// })
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-
-	db.View(func(tx database.Tx) error {
-
-		readValue := tx.Metadata().Get(key)
-		if !bytes.Equal(readValue, value) {
-			return fmt.Errorf("unexpected value for key '%s'", key)
-		}
-
-		return nil
-	})
 }
 
 func storeBlocks() {
@@ -109,9 +78,6 @@ func storeBlocks() {
 		return nil
 	})
 	fmt.Println(err)
-	// if err != nil {
-	// 	return
-	// }
 }
 
 func TestFFldb_TX() {
@@ -299,14 +265,28 @@ func TestFFldb_4() {
 }
 
 func TestFFldb_bucket() {
-	// var rootBucket database.Bucket
-	// err := db.View(func(tx database.Tx) error {
-	// 	rootBucket = tx.Metadata()
-	// 	return nil
-	// })
-	// if err != nil || rootBucket == nil {
-	// 	return
-	// }
+	var rootBucket database.Bucket
+	err := db.Update(func(tx database.Tx) error {
+		rootBucket = tx.Metadata()
+		csr := rootBucket.Cursor()
+
+		success := csr.First()
+		fmt.Println(success)
+
+		// ki := csr.Key()
+		// val := csr.Value()
+		// fmt.Println(string(ki), string(val))
+
+		rootBucket.ForEach(func(k, v []byte) error {
+			fmt.Println(string(k), string(v))
+			return nil
+		})
+		return nil
+	})
+	if err != nil || rootBucket == nil {
+		return
+	}
+	return
 
 	// nestedBucketKey := []byte("mybucket")
 	// nestedBucket, err := rootBucket.CreateBucket(nestedBucketKey)
@@ -321,29 +301,38 @@ func TestFFldb_bucket() {
 	// 	fmt.Errorf("key '%s' is not expected nil", key)
 	// }
 
-	err := db.Update(func(tx database.Tx) error {
+	err = db.Update(func(tx database.Tx) error {
 
-		rootBucket := tx.Metadata()
+		rootBucket = tx.Metadata()
 
-		// if err := tx.Metadata().Put(key, value); err != nil {
-		// 	return err
-		// }
+		// rootBucket.Cursor()
+
+		if err := rootBucket.Put(key, value); err != nil {
+			return err
+		}
+
+		for idx := 0; idx < 3; idx++ {
+			keyi := []byte(fmt.Sprintf("key_%d", idx))
+			vali := []byte(fmt.Sprintf("value_%d", idx))
+			err := rootBucket.Put(keyi, vali)
+			fmt.Println(err)
+		}
 
 		// if !bytes.Equal(tx.Metadata().Get(key), value) {
 		// 	return fmt.Errorf("unexpected value for key '%s'", key)
 		// }
 
-		nestedBucketKey := []byte("mybucket2")
-		nestedBucket, err := rootBucket.CreateBucket(nestedBucketKey)
-		if err != nil {
-			return err
-		}
+		// nestedBucketKey := []byte("mybucket2")
+		// nestedBucket, err := rootBucket.CreateBucket(nestedBucketKey)
+		// if err != nil {
+		// 	return err
+		// }
 
-		// The key from above that was set in the metadata bucket does
-		// not exist in this new nested bucket.
-		if nestedBucket.Get(key) != nil {
-			return fmt.Errorf("key '%s' is not expected nil", key)
-		}
+		// // The key from above that was set in the metadata bucket does
+		// // not exist in this new nested bucket.
+		// if nestedBucket.Get(key) != nil {
+		// 	return fmt.Errorf("key '%s' is not expected nil", key)
+		// }
 
 		return nil
 	})

@@ -545,6 +545,7 @@ func cursorFinalizer(c *cursor) {
 	// c.pendingIter.Release()
 	if c.mdbCursor != nil {
 		c.mdbCursor.Close()
+		c.mdbCursor = nil
 	}
 }
 
@@ -611,12 +612,16 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 	// return &cursor{bucket: b, dbIter: dbIter, pendingIter: pendingIter}
 	// // Create the cursor using the iterators.
 
-	mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
-	if err != nil {
-		// return convertErr("failed to open ldb transaction", err)
+	// mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
+	// if err != nil {
+	// 	// return convertErr("failed to open ldb transaction", err)
+	// 	return nil
+	// }
+	if b.tx.mdbRwTx == nil {
 		return nil
 	}
-	csr, err := mdbTx.RwCursor(string(bucketID))
+	// csr, err := b.tx.mdbRwTx.RwCursor(string(bucketID))
+	csr, err := b.tx.mdbRwTx.RwCursor(b.name)
 	if err != nil {
 		// return convertErr("failed to open ldb transaction", err)
 		return nil
@@ -627,9 +632,10 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 // bucket is an internal type used to represent a collection of key/value pairs
 // and implements the database.Bucket interface.
 type bucket struct {
-	tx  *transaction
-	key []byte
-	id  [4]byte
+	tx   *transaction
+	key  []byte
+	id   [4]byte
+	name string // bucket name
 }
 
 // Enforce bucket implements the database.Bucket interface.
@@ -868,6 +874,7 @@ func (b *bucket) Cursor() database.Cursor {
 	// Create the cursor and setup a runtime finalizer to ensure the
 	// iterators are released when the cursor is garbage collected.
 	c := newCursor(b, b.id[:], ctFull)
+
 	runtime.SetFinalizer(c, cursorFinalizer)
 	return c
 }
@@ -898,8 +905,14 @@ func (b *bucket) ForEach(fn func(k, v []byte) error) error {
 	// from the callback when it is non-nil.
 	c := newCursor(b, b.id[:], ctKeys)
 	defer cursorFinalizer(c)
-	for ok := c.First(); ok; ok = c.Next() {
+
+	idx := uint64(0)
+	count, _ := c.mdbCursor.Count()
+	// fmt.Println("cursor count:", count, err)
+
+	for ok := c.First(); ok && (idx < count); ok = c.Next() {
 		err := fn(c.Key(), c.Value())
+		idx++ // endless loop without "idx" controller
 		if err != nil {
 			return err
 		}
@@ -1069,6 +1082,10 @@ type transaction struct {
 	// transaction state.
 	activeIterLock sync.RWMutex
 	activeIters    []*treap.Iterator
+
+	// ------------------------------
+	mdbRoTx kv.Tx   // Read Only Tx handler of mdbx
+	mdbRwTx kv.RwTx // Read Write Tx handler of mdbx
 }
 
 // Enforce transaction implements the database.Tx interface.
@@ -1076,20 +1093,20 @@ var _ database.Tx = (*transaction)(nil)
 
 // removeActiveIter removes the passed iterator from the list of active
 // iterators against the pending keys treap.
-func (tx *transaction) removeActiveIter(iter *treap.Iterator) {
-	// An indexing for loop is intentionally used over a range here as range
-	// does not reevaluate the slice on each iteration nor does it adjust
-	// the index for the modified slice.
-	tx.activeIterLock.Lock()
-	for i := 0; i < len(tx.activeIters); i++ {
-		if tx.activeIters[i] == iter {
-			copy(tx.activeIters[i:], tx.activeIters[i+1:])
-			tx.activeIters[len(tx.activeIters)-1] = nil
-			tx.activeIters = tx.activeIters[:len(tx.activeIters)-1]
-		}
-	}
-	tx.activeIterLock.Unlock()
-}
+// func (tx *transaction) removeActiveIter(iter *treap.Iterator) {
+// 	// An indexing for loop is intentionally used over a range here as range
+// 	// does not reevaluate the slice on each iteration nor does it adjust
+// 	// the index for the modified slice.
+// 	tx.activeIterLock.Lock()
+// 	for i := 0; i < len(tx.activeIters); i++ {
+// 		if tx.activeIters[i] == iter {
+// 			copy(tx.activeIters[i:], tx.activeIters[i+1:])
+// 			tx.activeIters[len(tx.activeIters)-1] = nil
+// 			tx.activeIters = tx.activeIters[:len(tx.activeIters)-1]
+// 		}
+// 	}
+// 	tx.activeIterLock.Unlock()
+// }
 
 // addActiveIter adds the passed iterator to the list of active iterators for
 // the pending keys treap.
@@ -1734,6 +1751,7 @@ func (tx *transaction) close() {
 	tx.pendingKeys = nil
 	tx.pendingRemove = nil
 
+	tx.closeMdbTxs()
 	// Release the snapshot.
 	if tx.snapshot != nil {
 		tx.snapshot.Release()
@@ -1847,6 +1865,7 @@ func (tx *transaction) Commit() error {
 func (tx *transaction) Rollback() error {
 	// Prevent rollbacks on managed transactions.
 	if tx.managed {
+		tx.closeMdbTxs()
 		tx.close()
 		panic("managed transaction rollback not allowed")
 	}
@@ -1856,8 +1875,20 @@ func (tx *transaction) Rollback() error {
 		return err
 	}
 
+	tx.closeMdbTxs()
 	tx.close()
 	return nil
+}
+
+func (tx *transaction) closeMdbTxs() {
+	if tx.mdbRoTx != nil {
+		tx.mdbRoTx.Rollback()
+		tx.mdbRoTx = nil
+	}
+	if tx.mdbRwTx != nil {
+		tx.mdbRwTx.Rollback()
+		tx.mdbRwTx = nil
+	}
 }
 
 // db represents a collection of namespaces which are persisted and implements
@@ -1923,6 +1954,17 @@ func (db *db) begin(writable bool) (*transaction, error) {
 		return nil, err
 	}
 
+	var mdbRwtx kv.RwTx
+	var mdbRotx kv.Tx
+	if writable {
+		mdbRwtx, err = db.cache.mdb.BeginRw(context.Background())
+	} else {
+		mdbRotx, err = db.cache.mdb.BeginRo(context.Background())
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	// The metadata and block index buckets are internal-only buckets, so
 	// they have defined IDs.
 	tx := &transaction{
@@ -1931,9 +1973,12 @@ func (db *db) begin(writable bool) (*transaction, error) {
 		snapshot:      snapshot,
 		pendingKeys:   treap.NewMutable(),
 		pendingRemove: treap.NewMutable(),
+		mdbRoTx:       mdbRotx,
+		mdbRwTx:       mdbRwtx,
 	}
-	tx.metaBucket = &bucket{tx: tx, id: metadataBucketID}
-	tx.blockIdxBucket = &bucket{tx: tx, id: blockIdxBucketID}
+	tx.metaBucket = &bucket{tx: tx, id: metadataBucketID, name: mdbxRootBucket}
+	tx.blockIdxBucket = &bucket{tx: tx, id: blockIdxBucketID, name: mdbxRootBucket}
+
 	return tx, nil
 }
 
