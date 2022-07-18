@@ -5,6 +5,7 @@
 package ffldb
 
 import (
+	"errors"
 	"fmt"
 	"hash/crc32"
 
@@ -32,6 +33,9 @@ func serializeWriteRow(curBlockFileNum, curFileOffset uint32) []byte {
 // metadata.  Returns ErrCorruption if the checksum of the entry doesn't match.
 func deserializeWriteRow(writeRow []byte) (uint32, uint32, error) {
 	// Ensure the checksum matches.  The checksum is at the end.
+	if len(writeRow) < 12 {
+		return 0, 0, errors.New("invalid write row")
+	}
 	gotChecksum := crc32.Checksum(writeRow[:8], castagnoli)
 	wantChecksumBytes := writeRow[8:12]
 	wantChecksum := byteOrder.Uint32(wantChecksumBytes)
@@ -62,18 +66,18 @@ func reconcileDB(pdb *db, create bool) (database.DB, error) {
 	// Load the current write cursor position from the metadata.
 	var curFileNum, curOffset uint32
 	err := pdb.View(func(tx database.Tx) error {
-		//writeRow := tx.Metadata().Get(writeLocKeyName)
-		//if writeRow == nil {
-		//	str := "write cursor does not exist"
-		//	return makeDbErr(database.ErrCorruption, str, nil)
-		//}
-		//
-		//var err error
-		//curFileNum, curOffset, err = deserializeWriteRow(writeRow)
-		//return err
+		writeRow := tx.Metadata().Get(writeLocKeyName)
+		if writeRow == nil {
+			curFileNum, curOffset = 0, 0
+		} else {
+			var err1 error
+			curFileNum, curOffset, err1 = deserializeWriteRow(writeRow)
+			if err1 != nil {
+				str := "write cursor does not exist"
+				return makeDbErr(database.ErrCorruption, str, err1)
+			}
+		}
 
-		// temporary code, for skip leveldb snapshot feature
-		curFileNum, curOffset = 0, 0
 		return nil
 	})
 	if err != nil {

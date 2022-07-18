@@ -42,7 +42,7 @@ func (iter *ldbTreapIter) Error() error {
 // This is part of the leveldb iterator.Iterator interface implementation.
 func (iter *ldbTreapIter) Release() {
 	if !iter.released {
-		iter.tx.removeActiveIter(iter.Iterator)
+		// iter.tx.removeActiveIter(iter.Iterator)
 		iter.released = true
 	}
 }

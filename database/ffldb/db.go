@@ -165,6 +165,10 @@ func convertErr(desc string, ldbErr error) database.Error {
 // leveldb iterator keys and values since they are only valid until the iterator
 // is moved instead of during the entirety of the transaction.
 func copySlice(slice []byte) []byte {
+	if len(slice) < 1 {
+		return nil
+	}
+
 	ret := make([]byte, len(slice))
 	copy(ret, slice)
 	return ret
@@ -232,26 +236,26 @@ func (c *cursor) Delete() error {
 // skipPendingUpdates skips any keys at the current database iterator position
 // that are being updated by the transaction.  The forwards flag indicates the
 // direction the cursor is moving.
-func (c *cursor) skipPendingUpdates(forwards bool) {
-	// for c.dbIter.Valid() {
-	// 	var skip bool
-	// 	key := c.dbIter.Key()
-	// 	if c.bucket.tx.pendingRemove.Has(key) {
-	// 		skip = true
-	// 	} else if c.bucket.tx.pendingKeys.Has(key) {
-	// 		skip = true
-	// 	}
-	// 	if !skip {
-	// 		break
-	// 	}
+// func (c *cursor) skipPendingUpdates(forwards bool) {
+// for c.dbIter.Valid() {
+// 	var skip bool
+// 	key := c.dbIter.Key()
+// 	if c.bucket.tx.pendingRemove.Has(key) {
+// 		skip = true
+// 	} else if c.bucket.tx.pendingKeys.Has(key) {
+// 		skip = true
+// 	}
+// 	if !skip {
+// 		break
+// 	}
 
-	// 	if forwards {
-	// 		c.dbIter.Next()
-	// 	} else {
-	// 		c.dbIter.Prev()
-	// 	}
-	// }
-}
+// 	if forwards {
+// 		c.dbIter.Next()
+// 	} else {
+// 		c.dbIter.Prev()
+// 	}
+// }
+// }
 
 // chooseIterator first skips any entries in the database iterator that are
 // being updated by the transaction and sets the current iterator to the
@@ -620,10 +624,8 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 	if b.tx.mdbRwTx == nil {
 		return nil
 	}
-	// csr, err := b.tx.mdbRwTx.RwCursor(string(bucketID))
-	csr, err := b.tx.mdbRwTx.RwCursor(b.name)
+	csr, err := b.tx.mdbRwTx.RwCursor(mdbxRootBucket)
 	if err != nil {
-		// return convertErr("failed to open ldb transaction", err)
 		return nil
 	}
 	return &cursor{bucket: b, mdbCursor: csr}
@@ -1608,6 +1610,10 @@ func (tx *transaction) FetchBlockRegion(region *database.BlockRegion) ([]byte, e
 		return nil, err
 	}
 	location := deserializeBlockLoc(blockRow)
+	if location == nil {
+		str := fmt.Sprintf("no data for: %s ", region.Hash)
+		return nil, makeDbErr(database.ErrBlockRegionInvalid, str, nil)
+	}
 
 	// Ensure the region is within the bounds of the block.
 	endOffset := region.Offset + region.Len
@@ -1716,7 +1722,7 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 			return nil, makeDbErr(database.ErrBlockRegionInvalid, str, nil)
 		}
 
-		fetchList = append(fetchList, bulkFetchData{&location, i})
+		fetchList = append(fetchList, bulkFetchData{location, i})
 	}
 	sort.Sort(bulkFetchDataSorter(fetchList))
 
@@ -1726,7 +1732,7 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		ri := fetchData.replyIndex
 		region := &regions[ri]
 		location := fetchData.blockLocation
-		regionBytes, err := tx.db.store.readBlockRegion(*location,
+		regionBytes, err := tx.db.store.readBlockRegion(location,
 			region.Offset, region.Len)
 		if err != nil {
 			return nil, err
@@ -2161,18 +2167,19 @@ func fileExists(name string) bool {
 
 // 	return nil
 // }
-func initMDBX(mdb kv.RwDB) error {
-	err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
-		// NOTE:
-		// All buckets in MDBX must be created at here
-		// otherwise, it won't work
-		err := tx.CreateBucket(mdbxRootBucket)
-		return err
-	})
 
-	if err != nil {
-		return convertErr("failed to open ldb transaction", err)
-	}
+func initMDBX(mdb kv.RwDB) error {
+	// err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
+	// 	// NOTE:
+	// 	// All buckets in MDBX must be created at here
+	// 	// otherwise, it won't work
+	// 	err := tx.CreateBucket(mdbxRootBucket)
+	// 	return err
+	// })
+
+	// if err != nil {
+	// 	return convertErr("failed to open ldb transaction", err)
+	// }
 	return nil
 }
 

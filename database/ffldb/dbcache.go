@@ -298,9 +298,9 @@ func (snap *dbCacheSnapshot) Has(key []byte) bool {
 	// Consult the database.
 	// hasKey, _ := snap.dbSnapshot.Has(key, nil)
 	// return hasKey
-	snap.mdb.View(context.Background(), func(tx kv.Tx) error {
-		existing, _ = tx.Has(mdbxRootBucket, key)
-		return nil
+	snap.mdb.View(context.Background(), func(tx kv.Tx) (err error) {
+		existing, err = tx.Has(mdbxRootBucket, key)
+		return err
 	})
 
 	return existing
@@ -326,7 +326,7 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 	var retValue []byte
 	snap.mdb.View(context.Background(), func(tx kv.Tx) error {
 		val, err := tx.GetOne(mdbxRootBucket, key)
-		if err == nil {
+		if (err == nil) && (len(val) > 0) {
 			retValue = copySlice(val)
 		}
 		return err
@@ -455,13 +455,13 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 func (c *dbCache) updateDB(bucketName string, fn func(mdbTx kv.RwTx) error) error {
 
 	c.mdb.Update(context.Background(), func(tx kv.RwTx) error {
-		existing, _ := tx.ExistsBucket(bucketName)
-		if !existing {
-			err := tx.CreateBucket(bucketName)
-			if err != nil {
-				return convertErr("failed to create bucket", err)
-			}
-		}
+		// existing, _ := tx.ExistsBucket(bucketName)
+		// if !existing {
+		// 	err := tx.CreateBucket(bucketName)
+		// 	if err != nil {
+		// 		return convertErr("failed to create bucket", err)
+		// 	}
+		// }
 
 		if err := fn(tx); err != nil {
 			tx.Rollback()
