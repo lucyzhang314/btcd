@@ -220,7 +220,7 @@ func (c *cursor) Delete() error {
 		str := "cursor is exhausted"
 		return makeDbErr(database.ErrIncompatibleValue, str, nil)
 	}
-	c.mdbCursor.DeleteCurrent()
+	return c.mdbCursor.DeleteCurrent()
 
 	// Do not allow buckets to be deleted via the cursor.
 	// key := c.currentIter.Key()
@@ -230,7 +230,7 @@ func (c *cursor) Delete() error {
 	// }
 
 	// c.bucket.tx.deleteKey(copySlice(key), true)
-	return nil
+	// return nil
 }
 
 // skipPendingUpdates skips any keys at the current database iterator position
@@ -263,41 +263,41 @@ func (c *cursor) Delete() error {
 // in while taking into account the direction flag.  When the cursor is being
 // moved forwards and both iterators are valid, the iterator with the smaller
 // key is chosen and vice versa when the cursor is being moved backwards.
-func (c *cursor) chooseIterator(forwards bool) bool {
-	// // Skip any keys at the current database iterator position that are
-	// // being updated by the transaction.
-	// c.skipPendingUpdates(forwards)
+// func (c *cursor) chooseIterator(forwards bool) bool {
+// // Skip any keys at the current database iterator position that are
+// // being updated by the transaction.
+// c.skipPendingUpdates(forwards)
 
-	// // When both iterators are exhausted, the cursor is exhausted too.
-	// if !c.dbIter.Valid() && !c.pendingIter.Valid() {
-	// 	c.currentIter = nil
-	// 	return false
-	// }
+// // When both iterators are exhausted, the cursor is exhausted too.
+// if !c.dbIter.Valid() && !c.pendingIter.Valid() {
+// 	c.currentIter = nil
+// 	return false
+// }
 
-	// // Choose the database iterator when the pending keys iterator is
-	// // exhausted.
-	// if !c.pendingIter.Valid() {
-	// 	c.currentIter = c.dbIter
-	// 	return true
-	// }
+// // Choose the database iterator when the pending keys iterator is
+// // exhausted.
+// if !c.pendingIter.Valid() {
+// 	c.currentIter = c.dbIter
+// 	return true
+// }
 
-	// // Choose the pending keys iterator when the database iterator is
-	// // exhausted.
-	// if !c.dbIter.Valid() {
-	// 	c.currentIter = c.pendingIter
-	// 	return true
-	// }
+// // Choose the pending keys iterator when the database iterator is
+// // exhausted.
+// if !c.dbIter.Valid() {
+// 	c.currentIter = c.pendingIter
+// 	return true
+// }
 
-	// // Both iterators are valid, so choose the iterator with either the
-	// // smaller or larger key depending on the forwards flag.
-	// compare := bytes.Compare(c.dbIter.Key(), c.pendingIter.Key())
-	// if (forwards && compare > 0) || (!forwards && compare < 0) {
-	// 	c.currentIter = c.pendingIter
-	// } else {
-	// 	c.currentIter = c.dbIter
-	// }
-	return true
-}
+// // Both iterators are valid, so choose the iterator with either the
+// // smaller or larger key depending on the forwards flag.
+// compare := bytes.Compare(c.dbIter.Key(), c.pendingIter.Key())
+// if (forwards && compare > 0) || (!forwards && compare < 0) {
+// 	c.currentIter = c.pendingIter
+// } else {
+// 	c.currentIter = c.dbIter
+// }
+// 	return true
+// }
 
 // First positions the cursor at the first key/value pair and returns whether or
 // not the pair exists.
@@ -315,13 +315,11 @@ func (c *cursor) First() bool {
 	// c.pendingIter.First()
 	// return c.chooseIterator(true)
 
-	if c.mdbCursor != nil {
-		_, _, err := c.mdbCursor.First()
-		if err == nil {
-			return true
-		}
+	if c.mdbCursor == nil {
+		return false
 	}
-	return false
+	_, _, err := c.mdbCursor.First()
+	return err == nil
 }
 
 // Last positions the cursor at the last key/value pair and returns whether or
@@ -339,13 +337,12 @@ func (c *cursor) Last() bool {
 	// c.dbIter.Last()
 	// c.pendingIter.Last()
 	// return c.chooseIterator(false)
-	if c.mdbCursor != nil {
-		_, _, err := c.mdbCursor.Last()
-		if err == nil {
-			return true
-		}
+
+	if c.mdbCursor == nil {
+		return false
 	}
-	return false
+	_, _, err := c.mdbCursor.Last()
+	return err == nil
 }
 
 // Next moves the cursor one key/value pair forward and returns whether or not
@@ -367,13 +364,12 @@ func (c *cursor) Next() bool {
 	// // that is both valid and has the smaller key.
 	// c.currentIter.Next()
 	// return c.chooseIterator(true)
-	if c.mdbCursor != nil {
-		_, _, err := c.mdbCursor.Next()
-		if err == nil {
-			return true
-		}
+
+	if c.mdbCursor == nil {
+		return false
 	}
-	return false
+	_, _, err := c.mdbCursor.Next()
+	return err == nil
 }
 
 // Prev moves the cursor one key/value pair backward and returns whether or not
@@ -395,13 +391,11 @@ func (c *cursor) Prev() bool {
 	// // iterator that is both valid and has the larger key.
 	// c.currentIter.Prev()
 	// return c.chooseIterator(false)
-	if c.mdbCursor != nil {
-		_, _, err := c.mdbCursor.Prev()
-		if err == nil {
-			return true
-		}
+	if c.mdbCursor == nil {
+		return false
 	}
-	return false
+	_, _, err := c.mdbCursor.Prev()
+	return err == nil
 }
 
 // Seek positions the cursor at the first key/value pair that is greater than or
@@ -420,13 +414,11 @@ func (c *cursor) Seek(seek []byte) bool {
 	// c.dbIter.Seek(seekKey)
 	// c.pendingIter.Seek(seekKey)
 	// return c.chooseIterator(true)
-	if c.mdbCursor != nil {
-		_, _, err := c.mdbCursor.Seek(seek)
-		if err == nil {
-			return true
-		}
+	if c.mdbCursor == nil {
+		return false
 	}
-	return false
+	_, _, err := c.mdbCursor.Seek(seek)
+	return err == nil
 }
 
 // rawKey returns the current key the cursor is pointing to without stripping
@@ -446,9 +438,9 @@ func (c *cursor) rawKey() []byte {
 // This function is part of the database.Cursor interface implementation.
 func (c *cursor) Key() []byte {
 	// // Ensure transaction state is valid.
-	// if err := c.bucket.tx.checkClosed(); err != nil {
-	// 	return nil
-	// }
+	if err := c.bucket.tx.checkClosed(); err != nil {
+		return nil
+	}
 
 	// // Nothing to return if cursor is exhausted.
 	// if c.currentIter == nil {
@@ -470,11 +462,13 @@ func (c *cursor) Key() []byte {
 	// // normal entry.
 	// key = key[len(c.bucket.id):]
 	// return copySlice(key)
-	if c.mdbCursor != nil {
-		key, _, err := c.mdbCursor.Current()
-		if err == nil {
-			return copySlice(key)
-		}
+	if c.mdbCursor == nil {
+		return nil
+	}
+
+	key, _, err := c.mdbCursor.Current()
+	if err == nil {
+		return copySlice(key)
 	}
 
 	return []byte("")
@@ -498,9 +492,9 @@ func (c *cursor) rawValue() []byte {
 // This function is part of the database.Cursor interface implementation.
 func (c *cursor) Value() []byte {
 	// Ensure transaction state is valid.
-	// if err := c.bucket.tx.checkClosed(); err != nil {
-	// 	return nil
-	// }
+	if err := c.bucket.tx.checkClosed(); err != nil {
+		return nil
+	}
 
 	// // Nothing to return if cursor is exhausted.
 	// if c.currentIter == nil {
@@ -514,12 +508,13 @@ func (c *cursor) Value() []byte {
 	// }
 
 	// return copySlice(c.currentIter.Value())
+	if c.mdbCursor == nil {
+		return nil
+	}
 
-	if c.mdbCursor != nil {
-		_, value, err := c.mdbCursor.Current()
-		if err == nil {
-			return copySlice(value)
-		}
+	_, value, err := c.mdbCursor.Current()
+	if err == nil {
+		return copySlice(value)
 	}
 
 	return []byte("")
@@ -624,7 +619,7 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 	if b.tx.mdbRwTx == nil {
 		return nil
 	}
-	csr, err := b.tx.mdbRwTx.RwCursor(mdbxRootBucket)
+	csr, err := b.tx.mdbRwTx.RwCursor(mdbxBucketRoot)
 	if err != nil {
 		return nil
 	}
@@ -689,12 +684,12 @@ func (b *bucket) Bucket(key []byte) database.Bucket {
 	// copy(childBucket.id[:], childID)
 	// return childBucket
 
-	mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
-	if err != nil {
-		return nil
-	}
-	existing, err := mdbTx.ExistsBucket(string(key))
-	if (err == nil) && existing {
+	// mdbTx, err := b.tx.db.cache.mdb.BeginRw(context.Background())
+	// if err != nil {
+	// 	return nil
+	// }
+	// existing, err := mdbTx.ExistsBucket(string(key))
+	if b.tx.hasBucket(key) {
 		return &bucket{tx: b.tx, key: key}
 	}
 
@@ -780,7 +775,7 @@ func (b *bucket) CreateBucketIfNotExists(key []byte) (database.Bucket, error) {
 		return nil, err
 	}
 
-	// // Ensure the transaction is writable.
+	// Ensure the transaction is writable.
 	if !b.tx.writable {
 		str := "create bucket requires a writable database transaction"
 		return nil, makeDbErr(database.ErrTxNotWritable, str, nil)
@@ -876,7 +871,6 @@ func (b *bucket) Cursor() database.Cursor {
 	// Create the cursor and setup a runtime finalizer to ensure the
 	// iterators are released when the cursor is garbage collected.
 	c := newCursor(b, b.id[:], ctFull)
-
 	runtime.SetFinalizer(c, cursorFinalizer)
 	return c
 }
@@ -913,8 +907,8 @@ func (b *bucket) ForEach(fn func(k, v []byte) error) error {
 	// fmt.Println("cursor count:", count, err)
 
 	for ok := c.First(); ok && (idx < count); ok = c.Next() {
-		err := fn(c.Key(), c.Value())
 		idx++ // endless loop without "idx" controller
+		err := fn(c.Key(), c.Value())
 		if err != nil {
 			return err
 		}
@@ -949,8 +943,17 @@ func (b *bucket) ForEachBucket(fn func(k []byte) error) error {
 	// from the callback when it is non-nil.
 	c := newCursor(b, b.id[:], ctBuckets)
 	defer cursorFinalizer(c)
-	for ok := c.First(); ok; ok = c.Next() {
-		err := fn(c.Key())
+
+	idx := uint64(0)
+	count, _ := c.mdbCursor.Count()
+
+	for ok := c.First(); ok && (idx < count); ok = c.Next() {
+		idx++ // endless loop without "idx" controller
+		key := c.Key()
+		if !b.tx.hasBucket(key) {
+			continue
+		}
+		err := fn(key)
 		if err != nil {
 			return err
 		}
@@ -1112,11 +1115,11 @@ var _ database.Tx = (*transaction)(nil)
 
 // addActiveIter adds the passed iterator to the list of active iterators for
 // the pending keys treap.
-func (tx *transaction) addActiveIter(iter *treap.Iterator) {
-	tx.activeIterLock.Lock()
-	tx.activeIters = append(tx.activeIters, iter)
-	tx.activeIterLock.Unlock()
-}
+// func (tx *transaction) addActiveIter(iter *treap.Iterator) {
+// 	tx.activeIterLock.Lock()
+// 	tx.activeIters = append(tx.activeIters, iter)
+// 	tx.activeIterLock.Unlock()
+// }
 
 // notifyActiveIters notifies all of the active iterators for the pending keys
 // treap that it has been updated.
@@ -1139,46 +1142,86 @@ func (tx *transaction) checkClosed() error {
 }
 
 func (tx *transaction) hasBucket(key []byte) bool {
-	mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
-	if err != nil {
-		return false
+	// mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+	// if err != nil {
+	// 	return false
+	// }
+	// existing, err := mdbtx.ExistsBucket(string(key))
+	// return (err == nil) && existing
+
+	var (
+		existing bool
+		err      error
+	)
+	if tx.mdbRwTx != nil {
+		existing, err = tx.mdbRwTx.ExistsBucket(string(key))
+	} else {
+		err = tx.db.cache.mdb.Update(context.Background(), func(mdbRwTx kv.RwTx) error {
+			var err2 error
+			existing, err2 = mdbRwTx.ExistsBucket(string(key))
+			return err2
+		})
 	}
-	existing, err := mdbtx.ExistsBucket(string(key))
 	return (err == nil) && existing
 }
 
 func (tx *transaction) createBucket(key []byte) bool {
 	// When the transaction is writable, check the pending transaction
 	// state first.
-	if tx.writable {
-		mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
-		if err != nil {
-			return false
-		}
-		// existing, err := mdbtx.ExistsBucket(string(key))
-		err = mdbtx.CreateBucket(string(key))
-		if err == nil {
-			return true
-		}
+	if !tx.writable {
+		return false
+	}
+	// mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+	// if err != nil {
+	// 	return false
+	// }
+	// // existing, err := mdbtx.ExistsBucket(string(key))
+	// err = mdbtx.CreateBucket(string(key))
+	// if err == nil {
+	// 	return true
+	// }
+
+	var err error
+	if tx.mdbRwTx != nil {
+		err = tx.mdbRwTx.CreateBucket(string(key))
+	} else {
+		err = tx.db.cache.mdb.Update(context.Background(), func(mdbRwTx kv.RwTx) error {
+			return mdbRwTx.CreateBucket(string(key))
+		})
 	}
 
-	return false
+	return err == nil
 }
 
 func (tx *transaction) deleteBucket(key []byte) error {
-	if tx.writable {
-		mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
-		if err != nil {
-			return err
-		}
-		existing, err := mdbtx.ExistsBucket(string(key))
-		if (err == nil) && existing {
-			return mdbtx.DropBucket(string(key))
+	if !tx.writable {
+		return errors.New("Tx is readonly now")
+	}
+	// mdbtx, err := tx.db.cache.mdb.BeginRw(context.Background())
+	// if err != nil {
+	// 	return err
+	// }
+	// existing, err := mdbtx.ExistsBucket(string(key))
+	// if (err == nil) && existing {
+	// 	return mdbtx.DropBucket(string(key))
 
-		}
+	// }
+
+	existing := tx.hasBucket(key)
+	if !existing {
+		return errors.New("this bucket doesn't existing")
 	}
 
-	return errors.New("delete bucket failed")
+	var err error
+	if tx.mdbRwTx != nil {
+		err = tx.mdbRwTx.DropBucket(string(key))
+	} else {
+		err = tx.db.cache.mdb.Update(context.Background(), func(mdbRwTx kv.RwTx) error {
+			return mdbRwTx.DropBucket(string(key))
+		})
+	}
+
+	return err //errors.New("delete bucket failed")
 }
 
 // hasKey returns whether or not the provided key exists in the database while
@@ -1227,7 +1270,23 @@ func (tx *transaction) fetchKey(key []byte) []byte {
 			return nil
 		}
 		if value := tx.pendingKeys.Get(key); value != nil {
+			if len(value) < 1 {
+				fmt.Println(value)
+			}
 			return value
+		}
+	}
+
+	if tx.mdbRoTx != nil {
+		val, err := tx.mdbRoTx.GetOne(mdbxBucketRoot, key)
+		if (err == nil) && (len(val) > 0) {
+			return val
+		}
+	}
+	if tx.mdbRwTx != nil {
+		val, err := tx.mdbRwTx.GetOne(mdbxBucketRoot, key)
+		if (err == nil) && (len(val) > 0) {
+			return val
 		}
 	}
 
@@ -1478,11 +1537,14 @@ func (tx *transaction) FetchBlock(hash *chainhash.Hash) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	location := deserializeBlockLoc(blockRow)
+	location, err := deserializeBlockLoc(blockRow)
+	if err != nil {
+		return nil, err
+	}
 
 	// Read the block from the appropriate location.  The function also
 	// performs a checksum over the data to detect data corruption.
-	blockBytes, err := tx.db.store.readBlock(hash, location)
+	blockBytes, err := tx.db.store.readBlock(hash, *location)
 	if err != nil {
 		return nil, err
 	}
@@ -1609,10 +1671,10 @@ func (tx *transaction) FetchBlockRegion(region *database.BlockRegion) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
-	location := deserializeBlockLoc(blockRow)
-	if location == nil {
+	location, err := deserializeBlockLoc(blockRow)
+	if err != nil {
 		str := fmt.Sprintf("no data for: %s ", region.Hash)
-		return nil, makeDbErr(database.ErrBlockRegionInvalid, str, nil)
+		return nil, makeDbErr(database.ErrBlockRegionInvalid, str, err)
 	}
 
 	// Ensure the region is within the bounds of the block.
@@ -1626,7 +1688,7 @@ func (tx *transaction) FetchBlockRegion(region *database.BlockRegion) ([]byte, e
 	}
 
 	// Read the region from the appropriate disk block file.
-	regionBytes, err := tx.db.store.readBlockRegion(location, region.Offset,
+	regionBytes, err := tx.db.store.readBlockRegion(*location, region.Offset,
 		region.Len)
 	if err != nil {
 		return nil, err
@@ -1711,7 +1773,10 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		if err != nil {
 			return nil, err
 		}
-		location := deserializeBlockLoc(blockRow)
+		location, err := deserializeBlockLoc(blockRow)
+		if err != nil {
+			return nil, err
+		}
 
 		// Ensure the region is within the bounds of the block.
 		endOffset := region.Offset + region.Len
@@ -1732,8 +1797,7 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		ri := fetchData.replyIndex
 		region := &regions[ri]
 		location := fetchData.blockLocation
-		regionBytes, err := tx.db.store.readBlockRegion(location,
-			region.Offset, region.Len)
+		regionBytes, err := tx.db.store.readBlockRegion(*location, region.Offset, region.Len)
 		if err != nil {
 			return nil, err
 		}
@@ -1982,8 +2046,8 @@ func (db *db) begin(writable bool) (*transaction, error) {
 		mdbRoTx:       mdbRotx,
 		mdbRwTx:       mdbRwtx,
 	}
-	tx.metaBucket = &bucket{tx: tx, id: metadataBucketID, name: mdbxRootBucket}
-	tx.blockIdxBucket = &bucket{tx: tx, id: blockIdxBucketID, name: mdbxRootBucket}
+	tx.metaBucket = &bucket{tx: tx, id: metadataBucketID, name: mdbxBucketRoot}
+	tx.blockIdxBucket = &bucket{tx: tx, id: blockIdxBucketID, name: mdbxBucketIndex}
 
 	return tx, nil
 }
@@ -2169,17 +2233,6 @@ func fileExists(name string) bool {
 // }
 
 func initMDBX(mdb kv.RwDB) error {
-	// err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
-	// 	// NOTE:
-	// 	// All buckets in MDBX must be created at here
-	// 	// otherwise, it won't work
-	// 	err := tx.CreateBucket(mdbxRootBucket)
-	// 	return err
-	// })
-
-	// if err != nil {
-	// 	return convertErr("failed to open ldb transaction", err)
-	// }
 	return nil
 }
 
@@ -2221,7 +2274,8 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 	//mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).MustOpen()
 	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
-			mdbxRootBucket: kv.TableCfgItem{Flags: kv.Default},
+			mdbxBucketRoot:  kv.TableCfgItem{Flags: kv.Default},
+			mdbxBucketIndex: kv.TableCfgItem{Flags: kv.Default},
 		}
 	}).MustOpen()
 	// --------- for mdbx

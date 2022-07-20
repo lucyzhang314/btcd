@@ -10,6 +10,7 @@ package ffldb
 import (
 	"container/list"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -189,20 +190,20 @@ type blockLocation struct {
 // blockLocSize bytes or it will panic.  The error check is avoided here because
 // this information will always be coming from the block index which includes a
 // checksum to detect corruption.  Thus it is safe to use this unchecked here.
-func deserializeBlockLoc(serializedLoc []byte) *blockLocation {
+func deserializeBlockLoc(serializedLoc []byte) (*blockLocation, error) {
 	// The serialized block location format is:
 	//
 	//  [0:4]  Block file (4 bytes)
 	//  [4:8]  File offset (4 bytes)
 	//  [8:12] Block length (4 bytes)
 	if len(serializedLoc) < 12 {
-		return nil
+		return nil, errors.New("deserialize block loc error")
 	}
 	return &blockLocation{
 		blockFileNum: byteOrder.Uint32(serializedLoc[0:4]),
 		fileOffset:   byteOrder.Uint32(serializedLoc[4:8]),
 		blockLen:     byteOrder.Uint32(serializedLoc[8:12]),
-	}
+	}, nil
 }
 
 // serializeBlockLoc returns the serialization of the passed block location.
@@ -508,7 +509,7 @@ func (s *blockStore) writeBlock(rawBlock []byte) (blockLocation, error) {
 // read from the file.
 //
 // Format: <network><block length><serialized block><checksum>
-func (s *blockStore) readBlock(hash *chainhash.Hash, loc *blockLocation) ([]byte, error) {
+func (s *blockStore) readBlock(hash *chainhash.Hash, loc blockLocation) ([]byte, error) {
 	// Get the referenced block file handle opening the file as needed.  The
 	// function also handles closing files as needed to avoid going over the
 	// max allowed open files.
@@ -564,7 +565,7 @@ func (s *blockStore) readBlock(hash *chainhash.Hash, loc *blockLocation) ([]byte
 // limit.
 //
 // Returns ErrDriverSpecific if the data fails to read for any reason.
-func (s *blockStore) readBlockRegion(loc *blockLocation, offset, numBytes uint32) ([]byte, error) {
+func (s *blockStore) readBlockRegion(loc blockLocation, offset, numBytes uint32) ([]byte, error) {
 	// Get the referenced block file handle opening the file as needed.  The
 	// function also handles closing files as needed to avoid going over the
 	// max allowed open files.
