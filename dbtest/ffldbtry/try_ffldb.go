@@ -39,7 +39,7 @@ func TryFfldb() {
 	blockHeigh := int32(0)
 	steps := 10000
 
-	for blockHeigh < int32(steps*1000*10000) {
+	for blockHeigh < int32(steps) { // *1000*10000
 		fmt.Println("index:", blockHeigh)
 		// storeBlocks_one(blockHeigh, steps)
 		storeBlocks_two(blockHeigh, steps)

@@ -12,9 +12,6 @@ import (
 
 	"github.com/btcsuite/btcd/database/internal/treap"
 	"github.com/ledgerwatch/erigon-lib/kv"
-	// "github.com/syndtr/goleveldb/leveldb"
-	// "github.com/syndtr/goleveldb/leveldb/iterator"
-	// "github.com/syndtr/goleveldb/leveldb/util"
 )
 
 const (
@@ -40,72 +37,84 @@ const (
 	// ldbRecordIKeySize  = 8
 
 	// MDBX root bucket name
-	mdbxBucketRoot  = "bucketRoot"
-	mdbxBucketIndex = "bucketIndex"
+	mdbxBucketRoot = "bucketRoot"
 )
 
 // ldbCacheIter wraps a treap iterator to provide the additional functionality
 // needed to satisfy the leveldb iterator.Iterator interface.
-// type ldbCacheIter struct {
-// 	*treap.Iterator
-// }
+type ldbCacheIter struct {
+	*treap.Iterator
+}
 
 // Enforce ldbCacheIterator implements the leveldb iterator.Iterator interface.
-// var _ iterator.Iterator = (*ldbCacheIter)(nil)
+var _ Iterator = (*ldbCacheIter)(nil)
 
 // Error is only provided to satisfy the iterator interface as there are no
 // errors for this memory-only structure.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *ldbCacheIter) Error() error {
-// 	return nil
+func (iter *ldbCacheIter) Error() error {
+	return nil
+}
+
+// SetReleaser is only provided to satisfy the iterator interface as there is no
+// need to override it.
+//
+// This is part of the leveldb iterator.Iterator interface implementation.
+// func (iter *ldbCacheIter) SetReleaser(releaser Releaser) {
 // }
+
+// Release is only provided to satisfy the iterator interface.
+//
+// This is part of the leveldb iterator.Iterator interface implementation.
+func (iter *ldbCacheIter) Release() {
+}
 
 // newLdbCacheIter creates a new treap iterator for the given slice against the
 // pending keys for the passed cache snapshot and returns it wrapped in an
 // ldbCacheIter so it can be used as a leveldb iterator.
-// func newLdbCacheIter(snap *dbCacheSnapshot, slice *util.Range) *ldbCacheIter {
-// 	iter := snap.pendingKeys.Iterator(slice.Start, slice.Limit)
-// 	return &ldbCacheIter{Iterator: iter}
-// }
+func newLdbCacheIter(snap *dbCacheSnapshot, slice *Range) *ldbCacheIter {
+	iter := snap.pendingKeys.Iterator(slice.Start, slice.Limit)
+	return &ldbCacheIter{Iterator: iter}
+}
 
 // dbCacheIterator defines an iterator over the key/value pairs in the database
 // cache and underlying database.
-// type dbCacheIterator struct {
-// 	cacheSnapshot *dbCacheSnapshot
-// 	// dbIter        iterator.Iterator
-// 	// cacheIter     iterator.Iterator
-// 	// currentIter   iterator.Iterator
-// 	released bool
-// }
+type dbCacheIterator struct {
+	cacheSnapshot *dbCacheSnapshot
+	cacheIter     Iterator
+	currentIter   Iterator
+	released      bool
+	dbIter        kv.RwCursor
+	// dbIter        Iterator
+}
 
 // Enforce dbCacheIterator implements the leveldb iterator.Iterator interface.
-// var _ iterator.Iterator = (*dbCacheIterator)(nil)
+var _ Iterator = (*dbCacheIterator)(nil)
 
 // skipPendingUpdates skips any keys at the current database iterator position
 // that are being updated by the cache.  The forwards flag indicates the
-
 // direction the iterator is moving.
-// func (iter *dbCacheIterator) skipPendingUpdates(forwards bool) {
-// for iter.dbIter.Valid() {
-// 	var skip bool
-// 	key := iter.dbIter.Key()
-// 	if iter.cacheSnapshot.pendingRemove.Has(key) {
-// 		skip = true
-// 	} else if iter.cacheSnapshot.pendingKeys.Has(key) {
-// 		skip = true
-// 	}
-// 	if !skip {
-// 		break
-// 	}
+func (iter *dbCacheIterator) skipPendingUpdates(forwards bool) {
+	// for !iter.dbIter.Close() {
+	// 	var skip bool
+	// 	key, _, _ := iter.dbIter.Current()
+	// 	if iter.cacheSnapshot.pendingRemove.Has(key) {
+	// 		skip = true
+	// 	} else if iter.cacheSnapshot.pendingKeys.Has(key) {
+	// 		skip = true
+	// 	}
+	// 	if !skip {
+	// 		break
+	// 	}
 
-// 	if forwards {
-// 		iter.dbIter.Next()
-// 	} else {
-// 		iter.dbIter.Prev()
-// 	}
-// }
-// }
+	// 	if forwards {
+	// 		iter.dbIter.Next()
+	// 	} else {
+	// 		iter.dbIter.Prev()
+	// 	}
+	// }
+}
 
 // chooseIterator first skips any entries in the database iterator that are
 // being updated by the cache and sets the current iterator to the appropriate
@@ -113,168 +122,167 @@ const (
 // into account the direction flag.  When the iterator is being moved forwards
 // and both iterators are valid, the iterator with the smaller key is chosen and
 // vice versa when the iterator is being moved backwards.
-// func (iter *dbCacheIterator) chooseIterator(forwards bool) bool {
-// Skip any keys at the current database iterator position that are
-// being updated by the cache.
-// iter.skipPendingUpdates(forwards)
+func (iter *dbCacheIterator) chooseIterator(forwards bool) bool {
+	// Skip any keys at the current database iterator position that are
+	// being updated by the cache.
+	iter.skipPendingUpdates(forwards)
 
-// // When both iterators are exhausted, the iterator is exhausted too.
-// if !iter.dbIter.Valid() && !iter.cacheIter.Valid() {
-// 	iter.currentIter = nil
-// 	return false
-// }
+	// When both iterators are exhausted, the iterator is exhausted too.
+	// if !iter.dbIter.Valid() && !iter.cacheIter.Valid() {
+	// 	iter.currentIter = nil
+	// 	return false
+	// }
 
-// // Choose the database iterator when the cache iterator is exhausted.
-// if !iter.cacheIter.Valid() {
-// 	iter.currentIter = iter.dbIter
-// 	return true
-// }
+	// Choose the database iterator when the cache iterator is exhausted.
+	if !iter.cacheIter.Valid() {
+		// iter.currentIter = iter.dbIter
+		return true
+	}
 
-// // Choose the cache iterator when the database iterator is exhausted.
-// if !iter.dbIter.Valid() {
-// 	iter.currentIter = iter.cacheIter
-// 	return true
-// }
+	// Choose the cache iterator when the database iterator is exhausted.
+	// if !iter.dbIter.Valid() {
+	// 	iter.currentIter = iter.cacheIter
+	// 	return true
+	// }
 
-// // Both iterators are valid, so choose the iterator with either the
-// // smaller or larger key depending on the forwards flag.
-// compare := bytes.Compare(iter.dbIter.Key(), iter.cacheIter.Key())
-// if (forwards && compare > 0) || (!forwards && compare < 0) {
-// 	iter.currentIter = iter.cacheIter
-// } else {
-// 	iter.currentIter = iter.dbIter
-// }
-// 	return true
-// }
+	// Both iterators are valid, so choose the iterator with either the
+	// smaller or larger key depending on the forwards flag.
+	// compare := bytes.Compare(iter.dbIter.Key(), iter.cacheIter.Key())
+	// if (forwards && compare > 0) || (!forwards && compare < 0) {
+	// 	iter.currentIter = iter.cacheIter
+	// } else {
+	// 	iter.currentIter = iter.dbIter
+	// }
+	return true
+}
 
 // First positions the iterator at the first key/value pair and returns whether
 // or not the pair exists.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) First() bool {
-// Seek to the first key in both the database and cache iterators and
-// choose the iterator that is both valid and has the smaller key.
-// iter.dbIter.First()
-// iter.cacheIter.First()
-// return iter.chooseIterator(true)
-// 	return true
-// }
+func (iter *dbCacheIterator) First() bool {
+	// Seek to the first key in both the database and cache iterators and
+	// choose the iterator that is both valid and has the smaller key.
+	iter.dbIter.First()
+	iter.cacheIter.First()
+	return iter.chooseIterator(true)
+}
 
 // Last positions the iterator at the last key/value pair and returns whether or
 // not the pair exists.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Last() bool {
-// Seek to the last key in both the database and cache iterators and
-// choose the iterator that is both valid and has the larger key.
-// iter.dbIter.Last()
-// iter.cacheIter.Last()
-// return iter.chooseIterator(false)
-// 	return true
-// }
+func (iter *dbCacheIterator) Last() bool {
+	// Seek to the last key in both the database and cache iterators and
+	// choose the iterator that is both valid and has the larger key.
+	iter.dbIter.Last()
+	iter.cacheIter.Last()
+	return iter.chooseIterator(false)
+}
 
 // Next moves the iterator one key/value pair forward and returns whether or not
 // the pair exists.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Next() bool {
-// Nothing to return if cursor is exhausted.
-// if iter.currentIter == nil {
-// 	return false
-// }
+func (iter *dbCacheIterator) Next() bool {
+	// Nothing to return if cursor is exhausted.
+	if iter.currentIter == nil {
+		return false
+	}
 
-// // Move the current iterator to the next entry and choose the iterator
-// // that is both valid and has the smaller key.
-// iter.currentIter.Next()
-// return iter.chooseIterator(true)
-// 	return true
-// }
+	// Move the current iterator to the next entry and choose the iterator
+	// that is both valid and has the smaller key.
+	iter.currentIter.Next()
+	return iter.chooseIterator(true)
+}
 
 // Prev moves the iterator one key/value pair backward and returns whether or
 // not the pair exists.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Prev() bool {
-// Nothing to return if cursor is exhausted.
-// if iter.currentIter == nil {
-// 	return false
-// }
+func (iter *dbCacheIterator) Prev() bool {
+	// Nothing to return if cursor is exhausted.
+	if iter.currentIter == nil {
+		return false
+	}
 
-// // Move the current iterator to the previous entry and choose the
-// // iterator that is both valid and has the larger key.
-// iter.currentIter.Prev()
-// return iter.chooseIterator(false)
-// 	return true
-// }
+	// Move the current iterator to the previous entry and choose the
+	// iterator that is both valid and has the larger key.
+	iter.currentIter.Prev()
+	return iter.chooseIterator(false)
+}
 
 // Seek positions the iterator at the first key/value pair that is greater than
 // or equal to the passed seek key.  Returns false if no suitable key was found.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Seek(key []byte) bool {
-// Seek to the provided key in both the database and cache iterators
-// then choose the iterator that is both valid and has the larger key.
-// iter.dbIter.Seek(key)
-// iter.cacheIter.Seek(key)
-// return iter.chooseIterator(true)
-// 	return true
-// }
+func (iter *dbCacheIterator) Seek(key []byte) bool {
+	// Seek to the provided key in both the database and cache iterators
+	// then choose the iterator that is both valid and has the larger key.
+	iter.dbIter.Seek(key)
+	iter.cacheIter.Seek(key)
+	return iter.chooseIterator(true)
+}
 
 // Valid indicates whether the iterator is positioned at a valid key/value pair.
 // It will be considered invalid when the iterator is newly created or exhausted.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Valid() bool {
-// return iter.currentIter != nil
-// 	return true
-// }
+func (iter *dbCacheIterator) Valid() bool {
+	return iter.currentIter != nil
+}
 
 // Key returns the current key the iterator is pointing to.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Key() []byte {
-// Nothing to return if iterator is exhausted.
-// if iter.currentIter == nil {
-// 	return nil
-// }
+func (iter *dbCacheIterator) Key() []byte {
+	// Nothing to return if iterator is exhausted.
+	if iter.currentIter == nil {
+		return nil
+	}
 
-// return iter.currentIter.Key()
-// 	return []byte("")
-// }
+	return iter.currentIter.Key()
+}
 
 // Value returns the current value the iterator is pointing to.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Value() []byte {
-// Nothing to return if iterator is exhausted.
-// if iter.currentIter == nil {
-// 	return nil
-// }
+func (iter *dbCacheIterator) Value() []byte {
+	// Nothing to return if iterator is exhausted.
+	if iter.currentIter == nil {
+		return nil
+	}
 
-// return iter.currentIter.Value()
-// 	return []byte("")
+	return iter.currentIter.Value()
+}
+
+// SetReleaser is only provided to satisfy the iterator interface as there is no
+// need to override it.
+//
+// This is part of the leveldb iterator.Iterator interface implementation.
+// func (iter *dbCacheIterator) SetReleaser(releaser Releaser) {
 // }
 
 // Release releases the iterator by removing the underlying treap iterator from
 // the list of active iterators against the pending keys treap.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Release() {
-// 	if !iter.released {
-// iter.dbIter.Release()
-// iter.cacheIter.Release()
-// iter.currentIter = nil
-// 		iter.released = true
-// 	}
-// }
+func (iter *dbCacheIterator) Release() {
+	if !iter.released {
+		iter.dbIter.Close()
+		iter.cacheIter.Release()
+		iter.currentIter = nil
+		iter.released = true
+	}
+}
 
 // Error is only provided to satisfy the iterator interface as there are no
 // errors for this memory-only structure.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) Error() error {
-// 	return nil
-// }
+func (iter *dbCacheIterator) Error() error {
+	return nil
+}
 
 // dbCacheSnapshot defines a snapshot of the database cache and underlying
 // database at a particular point in time.
@@ -314,17 +322,15 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 	if snap.pendingRemove.Has(key) {
 		return nil
 	}
-	sss := "cfindexparentbucket"
-	// fmt.Println(string(key[4:]))
-	if sss == string(key[4:]) {
-		fmt.Println("1111 ---- ")
-		// fmt.Println(key)
-	}
+	// sss := "cfindexparentbucket"
+	// if sss == string(key[4:]) {
+	// 	fmt.Println("1111 ---- ")
+	// }
 	if value := snap.pendingKeys.Get(key); value != nil {
-		if len(value) < 1 {
-			fmt.Println(value)
-		}
-		fmt.Println("2222 ***")
+		// if len(value) < 1 {
+		// 	fmt.Println(value)
+		// }
+		// fmt.Println("2222 ***")
 		return value
 	}
 
@@ -340,25 +346,25 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 		if (err == nil) && (len(val) > 0) {
 			retValue = copySlice(val)
 		}
-		if err != nil {
-			fmt.Println(err)
-		}
-		if len(val) > 0 {
-			fmt.Println("key is:", string(key), "val is:", string(val))
-		} else {
-			fmt.Println("no data")
-		}
-		if len(retValue) > 0 {
-			fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue), "-------------")
-		} else {
-			fmt.Println("no data")
-		}
-		fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue))
+		// if err != nil {
+		// 	fmt.Println(err)
+		// }
+		// if len(val) > 0 {
+		// 	fmt.Println("key is:", string(key), "val is:", string(val))
+		// } else {
+		// 	fmt.Println("no data")
+		// }
+		// if len(retValue) > 0 {
+		// 	fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue), "-------------")
+		// } else {
+		// 	fmt.Println("no data")
+		// }
+		// fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue))
 		return err
 	})
-	if len(retValue) < 1 {
-		fmt.Println("no data")
-	}
+	// if len(retValue) < 1 {
+	// 	fmt.Println("no data")
+	// }
 
 	return retValue
 }
@@ -366,6 +372,7 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 // Release releases the snapshot.
 func (snap *dbCacheSnapshot) Release() {
 	// snap.dbSnapshot.Release()
+	// snap.mdb.Close()
 	snap.pendingKeys = nil
 	snap.pendingRemove = nil
 }
@@ -377,13 +384,13 @@ func (snap *dbCacheSnapshot) Release() {
 // The slice parameter allows the iterator to be limited to a range of keys.
 // The start key is inclusive and the limit key is exclusive.  Either or both
 // can be nil if the functionality is not desired.
-// func (snap *dbCacheSnapshot) NewIterator(slice *util.Range) *dbCacheIterator {
-// 	return &dbCacheIterator{
-// 		// dbIter:        snap.dbSnapshot.NewIterator(slice, nil),
-// 		// cacheIter:     newLdbCacheIter(snap, slice),
-// 		cacheSnapshot: snap,
-// 	}
-// }
+func (snap *dbCacheSnapshot) NewIterator(slice *Range, cursor kv.RwCursor) *dbCacheIterator {
+	return &dbCacheIterator{
+		dbIter:        cursor,
+		cacheIter:     newLdbCacheIter(snap, slice),
+		cacheSnapshot: snap,
+	}
+}
 
 // dbCache provides a database cache layer backed by an underlying database.  It
 // allows a maximum cache size and flush interval to be specified such that the
@@ -480,16 +487,15 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 // 	}
 // 	return nil
 // }
-func (c *dbCache) updateDB(bucketName string, fn func(mdbTx kv.RwTx) error) error {
+func (c *dbCache) updateDB(fn func(mdbTx kv.RwTx) error) error {
 
 	return c.mdb.Update(context.Background(), func(tx kv.RwTx) error {
-
-		if err := fn(tx); err != nil {
+		err := fn(tx)
+		if err != nil {
 			tx.Rollback()
-			return err
 		}
 
-		return nil
+		return err
 	})
 }
 
@@ -505,12 +511,10 @@ type TreapForEacher interface {
 // updates to the underlying database.
 func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error {
 
-	bucket := mdbxBucketRoot
-
-	return c.updateDB(bucket, func(mdbTx kv.RwTx) error {
+	return c.updateDB(func(mdbTx kv.RwTx) error {
 		var innerErr error
 		pendingKeys.ForEach(func(k, v []byte) bool {
-			if dbErr := mdbTx.Put(bucket, k, v); dbErr != nil {
+			if dbErr := mdbTx.Put(mdbxBucketRoot, k, v); dbErr != nil {
 				str := fmt.Sprintf("failed to put key %q to "+"mdbx transaction", k)
 				innerErr = convertErr(str, dbErr)
 				return false
@@ -522,7 +526,7 @@ func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error 
 		}
 
 		pendingRemove.ForEach(func(k, v []byte) bool {
-			if dbErr := mdbTx.Delete(bucket, k, nil); dbErr != nil {
+			if dbErr := mdbTx.Delete(mdbxBucketRoot, k, nil); dbErr != nil {
 				str := fmt.Sprintf("failed to delete "+"key %q from ldb transaction", k)
 				innerErr = convertErr(str, dbErr)
 				return false
@@ -683,14 +687,14 @@ func (c *dbCache) Close() error {
 		// Even if there is an error while flushing, attempt to close
 		// the underlying database.  The error is ignored since it would
 		// mask the flush error.
-		c.mdb.Close()
-		c.mdb = nil
+		// c.mdb.Close()   // needn't close, this assigned by outside
+		// c.mdb = nil
 
 		return err
 	}
 
-	c.mdb.Close()
-	c.mdb = nil
+	// c.mdb.Close() // needn't close, this assigned by outside
+	// c.mdb = nil
 
 	return nil
 }
