@@ -6,8 +6,6 @@ package ffldb
 
 import (
 	"github.com/btcsuite/btcd/database/internal/treap"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 // ldbTreapIter wraps a treap iterator to provide the additional functionality
@@ -19,7 +17,7 @@ type ldbTreapIter struct {
 }
 
 // Enforce ldbTreapIter implements the leveldb iterator.Iterator interface.
-var _ iterator.Iterator = (*ldbTreapIter)(nil)
+var _ Iterator = (*ldbTreapIter)(nil)
 
 // Error is only provided to satisfy the iterator interface as there are no
 // errors for this memory-only structure.
@@ -33,7 +31,7 @@ func (iter *ldbTreapIter) Error() error {
 // need to override it.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-func (iter *ldbTreapIter) SetReleaser(releaser util.Releaser) {
+func (iter *ldbTreapIter) SetReleaser(releaser Releaser) {
 }
 
 // Release releases the iterator by removing the underlying treap iterator from
@@ -51,7 +49,7 @@ func (iter *ldbTreapIter) Release() {
 // pending keys for the passed transaction and returns it wrapped in an
 // ldbTreapIter so it can be used as a leveldb iterator.  It also adds the new
 // iterator to the list of active iterators for the transaction.
-func newLdbTreapIter(tx *transaction, slice *util.Range) *ldbTreapIter {
+func newLdbTreapIter(tx *transaction, slice *Range) *ldbTreapIter {
 	iter := tx.pendingKeys.Iterator(slice.Start, slice.Limit)
 	tx.addActiveIter(iter)
 	return &ldbTreapIter{Iterator: iter, tx: tx}

@@ -23,10 +23,6 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon-lib/kv/mdbx"
 	mdbxlog "github.com/ledgerwatch/log/v3"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/comparer"
-	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 const (
@@ -146,14 +142,14 @@ func convertErr(desc string, ldbErr error) database.Error {
 	// 	code = database.ErrCorruption
 
 	// Database open/create errors.
-	case ldbErr == leveldb.ErrClosed:
-		code = database.ErrDbNotOpen
+	// case ldbErr == leveldb.ErrClosed:
+	// 	code = database.ErrDbNotOpen
 
-	// Transaction errors.
-	case ldbErr == leveldb.ErrSnapshotReleased:
-		code = database.ErrTxClosed
-	case ldbErr == leveldb.ErrIterReleased:
-		code = database.ErrTxClosed
+	// // Transaction errors.
+	// case ldbErr == leveldb.ErrSnapshotReleased:
+	// 	code = database.ErrTxClosed
+	// case ldbErr == leveldb.ErrIterReleased:
+	// 	code = database.ErrTxClosed
 	}
 
 	return database.Error{ErrorCode: code, Description: desc, Err: ldbErr}
@@ -176,9 +172,9 @@ func copySlice(slice []byte) []byte {
 // and nested buckets of a bucket and implements the database.Cursor interface.
 type cursor struct {
 	bucket      *bucket
-	dbIter      iterator.Iterator
-	pendingIter iterator.Iterator
-	currentIter iterator.Iterator
+	dbIter      Iterator
+	pendingIter Iterator
+	currentIter Iterator
 }
 
 // Enforce cursor implements the database.Cursor interface.
@@ -496,11 +492,11 @@ func cursorFinalizer(c *cursor) {
 // NOTE: The caller is responsible for calling the cursorFinalizer function on
 // the returned cursor.
 func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
-	var dbIter, pendingIter iterator.Iterator
+	var dbIter, pendingIter Iterator
 	switch cursorTyp {
 	case ctKeys:
-		keyRange := util.BytesPrefix(bucketID)
-		dbIter = b.tx.snapshot.NewIterator(keyRange, nil)
+		keyRange := BytesPrefix(bucketID)
+		dbIter = b.tx.snapshot.NewIterator(keyRange, b.tx)
 		pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
 		pendingIter = pendingKeyIter
 
@@ -514,9 +510,9 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 		prefix := make([]byte, len(bucketIndexPrefix)+4)
 		copy(prefix, bucketIndexPrefix)
 		copy(prefix[len(bucketIndexPrefix):], bucketID)
-		bucketRange := util.BytesPrefix(prefix)
+		bucketRange := BytesPrefix(prefix)
 
-		dbIter = b.tx.snapshot.NewIterator(bucketRange, nil)
+		dbIter = b.tx.snapshot.NewIterator(bucketRange, b.tx)
 		pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
 		pendingIter = pendingBucketIter
 
@@ -528,25 +524,24 @@ func newCursor(b *bucket, bucketID []byte, cursorTyp cursorType) *cursor {
 		prefix := make([]byte, len(bucketIndexPrefix)+4)
 		copy(prefix, bucketIndexPrefix)
 		copy(prefix[len(bucketIndexPrefix):], bucketID)
-		bucketRange := util.BytesPrefix(prefix)
-		keyRange := util.BytesPrefix(bucketID)
+		bucketRange := BytesPrefix(prefix)
+		keyRange := BytesPrefix(bucketID)
 
 		// Since both keys and buckets are needed from the database,
 		// create an individual iterator for each prefix and then create
 		// a merged iterator from them.
-		dbKeyIter := b.tx.snapshot.NewIterator(keyRange, nil)
-		dbBucketIter := b.tx.snapshot.NewIterator(bucketRange, nil)
-		iters := []iterator.Iterator{dbKeyIter, dbBucketIter}
-		dbIter = iterator.NewMergedIterator(iters, comparer.DefaultComparer, true)
+		dbKeyIter := b.tx.snapshot.NewIterator(keyRange, b.tx)
+		dbBucketIter := b.tx.snapshot.NewIterator(bucketRange, b.tx)
+		iters := []Iterator{dbKeyIter, dbBucketIter}
+		dbIter = NewMergedIterator(iters, DefaultComparer, true)
 
 		// Since both keys and buckets are needed from the pending keys,
 		// create an individual iterator for each prefix and then create
 		// a merged iterator from them.
 		pendingKeyIter := newLdbTreapIter(b.tx, keyRange)
 		pendingBucketIter := newLdbTreapIter(b.tx, bucketRange)
-		iters = []iterator.Iterator{pendingKeyIter, pendingBucketIter}
-		pendingIter = iterator.NewMergedIterator(iters,
-			comparer.DefaultComparer, true)
+		iters = []Iterator{pendingKeyIter, pendingBucketIter}
+		pendingIter = NewMergedIterator(iters, DefaultComparer, true)
 	}
 
 	// Create the cursor using the iterators.
@@ -1817,7 +1812,7 @@ func (db *db) begin(writable bool) (*transaction, error) {
 		db.writeLock.Lock()
 		db.getNum++
 		fmt.Println("------------ AndyDbgMsg: lock mutex, get num ++", db.getNum)
-		if db.getNum > 231878 {
+		if db.getNum > 257126 {
 			fmt.Println("------------ AndyDbgMsg: lock mutex, get num ++", db.getNum)
 		}
 	}
