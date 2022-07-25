@@ -12,6 +12,8 @@ import (
 
 	"github.com/btcsuite/btcd/database/internal/treap"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 const (
@@ -47,7 +49,7 @@ type ldbCacheIter struct {
 }
 
 // Enforce ldbCacheIterator implements the leveldb iterator.Iterator interface.
-var _ Iterator = (*ldbCacheIter)(nil)
+var _ iterator.Iterator = (*ldbCacheIter)(nil)
 
 // Error is only provided to satisfy the iterator interface as there are no
 // errors for this memory-only structure.
@@ -61,8 +63,8 @@ func (iter *ldbCacheIter) Error() error {
 // need to override it.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *ldbCacheIter) SetReleaser(releaser Releaser) {
-// }
+func (iter *ldbCacheIter) SetReleaser(releaser util.Releaser) {
+}
 
 // Release is only provided to satisfy the iterator interface.
 //
@@ -73,7 +75,7 @@ func (iter *ldbCacheIter) Release() {
 // newLdbCacheIter creates a new treap iterator for the given slice against the
 // pending keys for the passed cache snapshot and returns it wrapped in an
 // ldbCacheIter so it can be used as a leveldb iterator.
-func newLdbCacheIter(snap *dbCacheSnapshot, slice *Range) *ldbCacheIter {
+func newLdbCacheIter(snap *dbCacheSnapshot, slice *util.Range) *ldbCacheIter {
 	iter := snap.pendingKeys.Iterator(slice.Start, slice.Limit)
 	return &ldbCacheIter{Iterator: iter}
 }
@@ -82,23 +84,22 @@ func newLdbCacheIter(snap *dbCacheSnapshot, slice *Range) *ldbCacheIter {
 // cache and underlying database.
 type dbCacheIterator struct {
 	cacheSnapshot *dbCacheSnapshot
-	cacheIter     Iterator
-	currentIter   Iterator
+	cacheIter     iterator.Iterator
+	currentIter   iterator.Iterator
 	released      bool
-	dbIter        kv.RwCursor
-	// dbIter        Iterator
+	// dbIter        iterator.Iterator
 }
 
 // Enforce dbCacheIterator implements the leveldb iterator.Iterator interface.
-var _ Iterator = (*dbCacheIterator)(nil)
+var _ iterator.Iterator = (*dbCacheIterator)(nil)
 
 // skipPendingUpdates skips any keys at the current database iterator position
 // that are being updated by the cache.  The forwards flag indicates the
 // direction the iterator is moving.
 func (iter *dbCacheIterator) skipPendingUpdates(forwards bool) {
-	// for !iter.dbIter.Close() {
+	// for iter.dbIter.Valid() {
 	// 	var skip bool
-	// 	key, _, _ := iter.dbIter.Current()
+	// 	key := iter.dbIter.Key()
 	// 	if iter.cacheSnapshot.pendingRemove.Has(key) {
 	// 		skip = true
 	// 	} else if iter.cacheSnapshot.pendingKeys.Has(key) {
@@ -133,20 +134,20 @@ func (iter *dbCacheIterator) chooseIterator(forwards bool) bool {
 	// 	return false
 	// }
 
-	// Choose the database iterator when the cache iterator is exhausted.
-	if !iter.cacheIter.Valid() {
-		// iter.currentIter = iter.dbIter
-		return true
-	}
+	// // Choose the database iterator when the cache iterator is exhausted.
+	// if !iter.cacheIter.Valid() {
+	// 	iter.currentIter = iter.dbIter
+	// 	return true
+	// }
 
-	// Choose the cache iterator when the database iterator is exhausted.
+	// // Choose the cache iterator when the database iterator is exhausted.
 	// if !iter.dbIter.Valid() {
 	// 	iter.currentIter = iter.cacheIter
 	// 	return true
 	// }
 
-	// Both iterators are valid, so choose the iterator with either the
-	// smaller or larger key depending on the forwards flag.
+	// // Both iterators are valid, so choose the iterator with either the
+	// // smaller or larger key depending on the forwards flag.
 	// compare := bytes.Compare(iter.dbIter.Key(), iter.cacheIter.Key())
 	// if (forwards && compare > 0) || (!forwards && compare < 0) {
 	// 	iter.currentIter = iter.cacheIter
@@ -163,7 +164,7 @@ func (iter *dbCacheIterator) chooseIterator(forwards bool) bool {
 func (iter *dbCacheIterator) First() bool {
 	// Seek to the first key in both the database and cache iterators and
 	// choose the iterator that is both valid and has the smaller key.
-	iter.dbIter.First()
+	// iter.dbIter.First()
 	iter.cacheIter.First()
 	return iter.chooseIterator(true)
 }
@@ -175,7 +176,7 @@ func (iter *dbCacheIterator) First() bool {
 func (iter *dbCacheIterator) Last() bool {
 	// Seek to the last key in both the database and cache iterators and
 	// choose the iterator that is both valid and has the larger key.
-	iter.dbIter.Last()
+	// iter.dbIter.Last()
 	iter.cacheIter.Last()
 	return iter.chooseIterator(false)
 }
@@ -219,7 +220,7 @@ func (iter *dbCacheIterator) Prev() bool {
 func (iter *dbCacheIterator) Seek(key []byte) bool {
 	// Seek to the provided key in both the database and cache iterators
 	// then choose the iterator that is both valid and has the larger key.
-	iter.dbIter.Seek(key)
+	// iter.dbIter.Seek(key)
 	iter.cacheIter.Seek(key)
 	return iter.chooseIterator(true)
 }
@@ -260,8 +261,8 @@ func (iter *dbCacheIterator) Value() []byte {
 // need to override it.
 //
 // This is part of the leveldb iterator.Iterator interface implementation.
-// func (iter *dbCacheIterator) SetReleaser(releaser Releaser) {
-// }
+func (iter *dbCacheIterator) SetReleaser(releaser util.Releaser) {
+}
 
 // Release releases the iterator by removing the underlying treap iterator from
 // the list of active iterators against the pending keys treap.
@@ -269,7 +270,7 @@ func (iter *dbCacheIterator) Value() []byte {
 // This is part of the leveldb iterator.Iterator interface implementation.
 func (iter *dbCacheIterator) Release() {
 	if !iter.released {
-		iter.dbIter.Close()
+		// iter.dbIter.Release()
 		iter.cacheIter.Release()
 		iter.currentIter = nil
 		iter.released = true
@@ -384,9 +385,9 @@ func (snap *dbCacheSnapshot) Release() {
 // The slice parameter allows the iterator to be limited to a range of keys.
 // The start key is inclusive and the limit key is exclusive.  Either or both
 // can be nil if the functionality is not desired.
-func (snap *dbCacheSnapshot) NewIterator(slice *Range, cursor kv.RwCursor) *dbCacheIterator {
+func (snap *dbCacheSnapshot) NewIterator(slice *util.Range, cursor kv.RwCursor) *dbCacheIterator {
 	return &dbCacheIterator{
-		dbIter:        cursor,
+		// dbIter:        cursor,
 		cacheIter:     newLdbCacheIter(snap, slice),
 		cacheSnapshot: snap,
 	}
@@ -444,12 +445,6 @@ type dbCache struct {
 //
 // The snapshot must be released after use by calling Release.
 func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
-	// dbSnapshot, err := c.ldb.GetSnapshot()
-	// if err != nil {
-	// 	str := "failed to open transaction"
-	// 	return nil, convertErr(str, err)
-	// }
-
 	// Since the cached keys to be added and removed use an immutable treap,
 	// a snapshot is simply obtaining the root of the tree under the lock
 	// which is used to atomically swap the root.
@@ -510,31 +505,34 @@ type TreapForEacher interface {
 // commitTreaps atomically commits all of the passed pending add/update/remove
 // updates to the underlying database.
 func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error {
-
 	return c.updateDB(func(mdbTx kv.RwTx) error {
-		var innerErr error
-		pendingKeys.ForEach(func(k, v []byte) bool {
-			if dbErr := mdbTx.Put(mdbxBucketRoot, k, v); dbErr != nil {
-				str := fmt.Sprintf("failed to put key %q to "+"mdbx transaction", k)
-				innerErr = convertErr(str, dbErr)
-				return false
-			}
-			return true
-		})
-		if innerErr != nil {
-			return innerErr
-		}
-
-		pendingRemove.ForEach(func(k, v []byte) bool {
-			if dbErr := mdbTx.Delete(mdbxBucketRoot, k, nil); dbErr != nil {
-				str := fmt.Sprintf("failed to delete "+"key %q from ldb transaction", k)
-				innerErr = convertErr(str, dbErr)
-				return false
-			}
-			return true
-		})
-		return innerErr
+		return c.do_commitTreaps(mdbTx, pendingKeys, pendingRemove)
 	})
+}
+
+func (c *dbCache) do_commitTreaps(mdbTx kv.RwTx, pendingKeys, pendingRemove TreapForEacher) error {
+	var innerErr error
+	pendingKeys.ForEach(func(k, v []byte) bool {
+		if dbErr := mdbTx.Put(mdbxBucketRoot, k, v); dbErr != nil {
+			str := fmt.Sprintf("failed to put key %q to "+"mdbx transaction", k)
+			innerErr = convertErr(str, dbErr)
+			return false
+		}
+		return true
+	})
+	if innerErr != nil {
+		return innerErr
+	}
+
+	pendingRemove.ForEach(func(k, v []byte) bool {
+		if dbErr := mdbTx.Delete(mdbxBucketRoot, k, nil); dbErr != nil {
+			str := fmt.Sprintf("failed to delete "+"key %q from ldb transaction", k)
+			innerErr = convertErr(str, dbErr)
+			return false
+		}
+		return true
+	})
+	return innerErr
 }
 
 // flush flushes the database cache to persistent storage.  This involes syncing
@@ -542,7 +540,7 @@ func (c *dbCache) commitTreaps(pendingKeys, pendingRemove TreapForEacher) error 
 // cache to the underlying database.
 //
 // This function MUST be called with the database write lock held.
-func (c *dbCache) flush() error {
+func (c *dbCache) flush(tx *transaction) error {
 	c.lastFlush = time.Now()
 
 	// Sync the current write file associated with the block store.  This is
@@ -567,8 +565,14 @@ func (c *dbCache) flush() error {
 	}
 
 	// Perform all leveldb updates using an atomic transaction.
-	if err := c.commitTreaps(cachedKeys, cachedRemove); err != nil {
-		return err
+	if (tx != nil) && (tx.mdbRwTx != nil) {
+		if err := c.do_commitTreaps(tx.mdbRwTx, cachedKeys, cachedRemove); err != nil {
+			return err
+		}
+	} else {
+		if err := c.commitTreaps(cachedKeys, cachedRemove); err != nil {
+			return err
+		}
 	}
 
 	// Clear the cache since it has been flushed.
@@ -625,14 +629,19 @@ func (c *dbCache) commitTx(tx *transaction) error {
 	// Flush the cache and write the current transaction directly to the
 	// database if a flush is needed.
 	if c.needsFlush(tx) {
-		if err := c.flush(); err != nil {
+		if err := c.flush(tx); err != nil {
 			return err
 		}
 
 		// Perform all leveldb updates using an atomic transaction.
-		err := c.commitTreaps(tx.pendingKeys, tx.pendingRemove)
-		if err != nil {
-			return err
+		if (tx != nil) && (tx.mdbRwTx != nil) {
+			if err := c.do_commitTreaps(tx.mdbRwTx, tx.pendingKeys, tx.pendingRemove); err != nil {
+				return err
+			}
+		} else {
+			if err := c.commitTreaps(tx.pendingKeys, tx.pendingRemove); err != nil {
+				return err
+			}
 		}
 
 		// Clear the transaction entries since they have been committed.
@@ -683,18 +692,18 @@ func (c *dbCache) commitTx(tx *transaction) error {
 // This function MUST be called with the database write lock held.
 func (c *dbCache) Close() error {
 	// Flush any outstanding cached entries to disk.
-	if err := c.flush(); err != nil {
+	if err := c.flush(nil); err != nil {
 		// Even if there is an error while flushing, attempt to close
 		// the underlying database.  The error is ignored since it would
 		// mask the flush error.
-		// c.mdb.Close()   // needn't close, this assigned by outside
-		// c.mdb = nil
+		c.mdb.Close() // needn't close, this assigned by outside
+		c.mdb = nil
 
 		return err
 	}
 
-	// c.mdb.Close() // needn't close, this assigned by outside
-	// c.mdb = nil
+	c.mdb.Close() // needn't close, this assigned by outside
+	c.mdb = nil
 
 	return nil
 }
