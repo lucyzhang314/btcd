@@ -13,6 +13,20 @@ type mdbxIterator struct {
 // Enforce ldbCacheIterator implements the leveldb iterator.Iterator interface.
 var _ Iterator = (*mdbxIterator)(nil)
 
+func newMdbxIterator(tx kv.Tx) *mdbxIterator {
+	if tx == nil {
+		return nil
+	}
+
+	csr, err := tx.Cursor(mdbxBucketRoot)
+	if err != nil {
+		return nil
+	}
+
+	csr.First()
+	return &mdbxIterator{cursor: csr}
+}
+
 // Error is only provided to satisfy the iterator interface as there are no
 // errors for this memory-only structure.
 //
@@ -36,8 +50,10 @@ func (iter *mdbxIterator) Release() {
 }
 
 func (iter *mdbxIterator) Valid() bool {
-	return true
+	key, _, _ := iter.cursor.Current()
+	return len(key) > 0
 }
+
 func (iter *mdbxIterator) First() bool {
 	_, _, err := iter.cursor.First()
 	return err == nil
@@ -65,18 +81,16 @@ func (iter *mdbxIterator) Seek(key []byte) bool {
 
 func (iter *mdbxIterator) Key() []byte {
 	ki, _, err := iter.cursor.Current()
-	if err == nil {
-		return ki
-	} else {
+	if err != nil {
 		return nil
 	}
+	return ki
 }
 
 func (iter *mdbxIterator) Value() []byte {
 	_, val, err := iter.cursor.Current()
-	if err == nil {
-		return val
-	} else {
+	if err != nil {
 		return nil
 	}
+	return val
 }

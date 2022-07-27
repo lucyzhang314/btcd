@@ -83,7 +83,8 @@ type dbCacheIterator struct {
 	cacheIter     Iterator
 	currentIter   Iterator
 	released      bool
-	dbIter        *mdbxIterator
+	dbIter        Iterator
+	// dbIter        *mdbxIterator
 }
 
 // Enforce dbCacheIterator implements the leveldb iterator.Iterator interface.
@@ -348,22 +349,22 @@ func (snap *dbCacheSnapshot) Release() {
 // The start key is inclusive and the limit key is exclusive.  Either or both
 // can be nil if the functionality is not desired.
 func (snap *dbCacheSnapshot) NewIterator(slice *Range, tx *transaction) *dbCacheIterator {
+
+	if tx == nil {
+		panic("Can't create iterator with nil tx")
+	}
+
 	ci := &dbCacheIterator{
 		// dbIter:        &mdbxIterator{cursor: cursor},
 		cacheIter:     newLdbCacheIter(snap, slice),
 		cacheSnapshot: snap,
 	}
 
-	if tx != nil {
-		if tx.mdbRoTx != nil {
-			csr, _ := tx.mdbRoTx.Cursor(mdbxBucketRoot)
-			ci.dbIter = &mdbxIterator{cursor: csr}
-		}
-		if tx.mdbRwTx != nil {
-			csr, _ := tx.mdbRwTx.RwCursor(mdbxBucketRoot)
-			ci.dbIter = &mdbxIterator{cursor: csr}
-		}
+	mdbTx := tx.mdbRoTx
+	if tx.mdbRwTx != nil {
+		mdbTx = tx.mdbRwTx
 	}
+	ci.dbIter = newMdbxIterator(mdbTx)
 
 	return ci
 }
