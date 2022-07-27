@@ -57,7 +57,6 @@ func reconcileDB(pdb *db, create bool) (database.DB, error) {
 	// Perform initial internal bucket and value creation during database
 	// creation.
 	if create {
-		// if err := initDB(pdb.cache.ldb); err != nil {
 		if err := initMDBX(pdb.cache.mdb); err != nil {
 			return nil, err
 		}

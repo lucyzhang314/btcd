@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -88,7 +87,6 @@ type dbCacheIterator struct {
 	currentIter   Iterator
 	released      bool
 	dbIter        *mdbxIterator
-	// dbIter        iterator.Iterator
 }
 
 // Enforce dbCacheIterator implements the leveldb iterator.Iterator interface.
@@ -289,7 +287,6 @@ func (iter *dbCacheIterator) Error() error {
 // dbCacheSnapshot defines a snapshot of the database cache and underlying
 // database at a particular point in time.
 type dbCacheSnapshot struct {
-	// dbSnapshot    *leveldb.Snapshot
 	mdb           kv.RwDB
 	pendingKeys   *treap.Immutable
 	pendingRemove *treap.Immutable
@@ -324,57 +321,26 @@ func (snap *dbCacheSnapshot) Get(key []byte) []byte {
 	if snap.pendingRemove.Has(key) {
 		return nil
 	}
-	// sss := "cfindexparentbucket"
-	// if sss == string(key[4:]) {
-	// 	fmt.Println("1111 ---- ")
-	// }
 	if value := snap.pendingKeys.Get(key); value != nil {
-		// if len(value) < 1 {
-		// 	fmt.Println(value)
-		// }
-		// fmt.Println("2222 ***")
 		return value
 	}
 
 	// Consult the database.
-	//value, err := snap.dbSnapshot.Get(key, nil)
-	//if err != nil {
-	//	return nil
-	//}
-	//return value
 	var retValue []byte
 	snap.mdb.View(context.Background(), func(tx kv.Tx) error {
 		val, err := tx.GetOne(mdbxBucketRoot, key)
 		if (err == nil) && (len(val) > 0) {
 			retValue = copySlice(val)
 		}
-		// if err != nil {
-		// 	fmt.Println(err)
-		// }
-		// if len(val) > 0 {
-		// 	fmt.Println("key is:", string(key), "val is:", string(val))
-		// } else {
-		// 	fmt.Println("no data")
-		// }
-		// if len(retValue) > 0 {
-		// 	fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue), "-------------")
-		// } else {
-		// 	fmt.Println("no data")
-		// }
-		// fmt.Println("key is:", string(key), "val is:", string(val), "retValue is:", string(retValue))
 		return err
 	})
-	// if len(retValue) < 1 {
-	// 	fmt.Println("no data")
-	// }
 
 	return retValue
 }
 
 // Release releases the snapshot.
 func (snap *dbCacheSnapshot) Release() {
-	// snap.dbSnapshot.Release()
-	// snap.mdb.Close()
+	snap.mdb = nil // needn't close, this assigned by outside
 	snap.pendingKeys = nil
 	snap.pendingRemove = nil
 }
@@ -415,9 +381,6 @@ func (snap *dbCacheSnapshot) NewIterator(slice *Range, tx *transaction) *dbCache
 // can commit transactions at will without incurring large performance hits due
 // to frequent disk syncs.
 type dbCache struct {
-	// ldb is the underlying leveldb DB for metadata.
-	// ldb *leveldb.DB
-
 	mdb kv.RwDB
 
 	// store is used to sync blocks to flat files.
@@ -464,7 +427,6 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 	// which is used to atomically swap the root.
 	c.cacheLock.RLock()
 	cacheSnapshot := &dbCacheSnapshot{
-		// dbSnapshot:    dbSnapshot,
 		mdb:           c.mdb,
 		pendingKeys:   c.cachedKeys,
 		pendingRemove: c.cachedRemove,
@@ -478,33 +440,9 @@ func (c *dbCache) Snapshot() (*dbCacheSnapshot, error) {
 // the transaction to be rolled back and are returned from this function.
 // Otherwise, the transaction is committed when the user-supplied function
 // returns a nil error.
-// func (c *dbCache) updateDB(fn func(ldbTx *leveldb.Transaction) error) error {
-// 	// Start a leveldb transaction.
-// 	ldbTx, err := c.ldb.OpenTransaction()
-// 	if err != nil {
-// 		return convertErr("failed to open ldb transaction", err)
-// 	}
-
-// 	if err := fn(ldbTx); err != nil {
-// 		ldbTx.Discard()
-// 		return err
-// 	}
-
-// 	// Commit the leveldb transaction and convert any errors as needed.
-// 	if err := ldbTx.Commit(); err != nil {
-// 		return convertErr("failed to commit leveldb transaction", err)
-// 	}
-// 	return nil
-// }
 func (c *dbCache) updateDB(fn func(mdbTx kv.RwTx) error) error {
-
 	return c.mdb.Update(context.Background(), func(tx kv.RwTx) error {
-		err := fn(tx)
-		if err != nil {
-			tx.Rollback()
-		}
-
-		return err
+		return fn(tx)
 	})
 }
 
@@ -539,10 +477,6 @@ func (c *dbCache) do_commitTreaps(mdbTx kv.RwTx, pendingKeys, pendingRemove Trea
 	}
 
 	pendingRemove.ForEach(func(k, v []byte) bool {
-		key := string(k)
-		if strings.HasPrefix(key, "bi") {
-			fmt.Println("------------ AndyDbgMsg, pendingRemove.ForEach, KEY:", string(k), "  -- Value:", string(v))
-		}
 		if dbErr := mdbTx.Delete(mdbxBucketRoot, k, nil); dbErr != nil {
 			str := fmt.Sprintf("failed to delete "+"key %q from ldb transaction", k)
 			innerErr = convertErr(str, dbErr)
@@ -714,13 +648,13 @@ func (c *dbCache) Close() error {
 		// Even if there is an error while flushing, attempt to close
 		// the underlying database.  The error is ignored since it would
 		// mask the flush error.
-		c.mdb.Close() // needn't close, this assigned by outside
+		c.mdb.Close()
 		c.mdb = nil
 
 		return err
 	}
 
-	c.mdb.Close() // needn't close, this assigned by outside
+	c.mdb.Close()
 	c.mdb = nil
 
 	return nil
