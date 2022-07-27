@@ -12,6 +12,11 @@ import (
 	"github.com/btcsuite/btcd/database"
 )
 
+const (
+	// MDBX root bucket name
+	mdbxBucketRoot = "bucketRoot"
+)
+
 // bucket is an internal type used to represent a collection of key/value pairs
 // and implements the database.Bucket interface.
 type bucket struct {

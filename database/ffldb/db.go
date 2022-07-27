@@ -57,7 +57,7 @@ func (db *db) begin(writable bool) (*transaction, error) {
 	if writable {
 		db.writeLock.Lock()
 		db.getNum++
-		fmt.Println("------------ AndyDbgMsg: lock mutex, getNum++", db.getNum)
+		// fmt.Println("------------ AndyDbgMsg: lock mutex, getNum++", db.getNum)
 		// if db.getNum > 257126 {
 		// 	fmt.Println("------------ AndyDbgMsg: lock mutex, get num ++", db.getNum)
 		// }

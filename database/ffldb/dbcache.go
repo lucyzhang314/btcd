@@ -36,9 +36,6 @@ const (
 	// prevent the GC from allocating a lot of extra unneeded space.
 	// ldbBatchHeaderSize = 12
 	// ldbRecordIKeySize  = 8
-
-	// MDBX root bucket name
-	mdbxBucketRoot = "bucketRoot"
 )
 
 // ldbCacheIter wraps a treap iterator to provide the additional functionality
@@ -302,10 +299,8 @@ func (snap *dbCacheSnapshot) Has(key []byte) bool {
 		return true
 	}
 
-	existing := false
 	// Consult the database.
-	// hasKey, _ := snap.dbSnapshot.Has(key, nil)
-	// return hasKey
+	existing := false
 	snap.mdb.View(context.Background(), func(tx kv.Tx) (err error) {
 		existing, err = tx.Has(mdbxBucketRoot, key)
 		return err
@@ -586,7 +581,7 @@ func (c *dbCache) commitTx(tx *transaction) error {
 		}
 
 		// Perform all leveldb updates using an atomic transaction.
-		if (tx != nil) && (tx.mdbRwTx != nil) {
+		if tx.mdbRwTx != nil {
 			if err := c.do_commitTreaps(tx.mdbRwTx, tx.pendingKeys, tx.pendingRemove); err != nil {
 				return err
 			}

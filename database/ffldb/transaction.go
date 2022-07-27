@@ -171,9 +171,6 @@ func (tx *transaction) fetchKey(key []byte) []byte {
 			return nil
 		}
 		if value := tx.pendingKeys.Get(key); value != nil {
-			// if len(value) < 1 {
-			// 	fmt.Println(value)
-			// }
 			return value
 		}
 	}
@@ -736,7 +733,7 @@ func (tx *transaction) close() {
 	// Release the writer lock for writable transactions to unblock any
 	// other write transaction which are possibly waiting.
 	if tx.writable {
-		fmt.Println("------------ AndyDbgMsg: unlock:", tx.db.getNum)
+		// fmt.Println("------------ AndyDbgMsg: unlock:", tx.db.getNum)
 		tx.db.writeLock.Unlock()
 	}
 }
@@ -833,7 +830,7 @@ func (tx *transaction) Commit() error {
 	if err != nil {
 		return err
 	}
-	if (tx != nil) && (tx.mdbRwTx != nil) {
+	if tx.mdbRwTx != nil {
 		err := tx.mdbRwTx.Commit()
 		if err != nil {
 			return err
