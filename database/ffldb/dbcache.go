@@ -312,13 +312,28 @@ func (snap *dbCacheSnapshot) Has(key []byte) bool {
 
 // Get returns the value for the passed key.  The function will return nil when
 // the key does not exist.
-func (snap *dbCacheSnapshot) Get(key []byte) []byte {
+func (snap *dbCacheSnapshot) Get(tx *transaction, key []byte) []byte {
 	// Check the cached entries first.
 	if snap.pendingRemove.Has(key) {
 		return nil
 	}
 	if value := snap.pendingKeys.Get(key); value != nil {
 		return value
+	}
+
+	if tx != nil {
+		if tx.mdbRoTx != nil {
+			val, err := tx.mdbRoTx.GetOne(mdbxBucketRoot, key)
+			if (err == nil) && (len(val) > 0) {
+				return val
+			}
+		}
+		if tx.mdbRwTx != nil {
+			val, err := tx.mdbRwTx.GetOne(mdbxBucketRoot, key)
+			if (err == nil) && (len(val) > 0) {
+				return val
+			}
+		}
 	}
 
 	// Consult the database.

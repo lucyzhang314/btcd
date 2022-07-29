@@ -175,21 +175,8 @@ func (tx *transaction) fetchKey(key []byte) []byte {
 		}
 	}
 
-	if tx.mdbRoTx != nil {
-		val, err := tx.mdbRoTx.GetOne(mdbxBucketRoot, key)
-		if (err == nil) && (len(val) > 0) {
-			return val
-		}
-	}
-	if tx.mdbRwTx != nil {
-		val, err := tx.mdbRwTx.GetOne(mdbxBucketRoot, key)
-		if (err == nil) && (len(val) > 0) {
-			return val
-		}
-	}
-
 	// Consult the database cache and underlying database.
-	return tx.snapshot.Get(key)
+	return tx.snapshot.Get(tx, key)
 }
 
 // deleteKey adds the provided key to the list of keys to be deleted from the
