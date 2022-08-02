@@ -71,45 +71,6 @@ const (
 	errTxClosedStr = "database tx is closed"
 )
 
-// bulkFetchData is allows a block location to be specified along with the
-// index it was requested from.  This in turn allows the bulk data loading
-// functions to sort the data accesses based on the location to improve
-// performance while keeping track of which result the data is for.
-type bulkFetchData struct {
-	*blockLocation
-	replyIndex int
-}
-
-// bulkFetchDataSorter implements sort.Interface to allow a slice of
-// bulkFetchData to be sorted.  In particular it sorts by file and then
-// offset so that reads from files are grouped and linear.
-type bulkFetchDataSorter []bulkFetchData
-
-// Len returns the number of items in the slice.  It is part of the
-// sort.Interface implementation.
-func (s bulkFetchDataSorter) Len() int {
-	return len(s)
-}
-
-// Swap swaps the items at the passed indices.  It is part of the
-// sort.Interface implementation.
-func (s bulkFetchDataSorter) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-// Less returns whether the item with index i should sort before the item with
-// index j.  It is part of the sort.Interface implementation.
-func (s bulkFetchDataSorter) Less(i, j int) bool {
-	if s[i].blockFileNum < s[j].blockFileNum {
-		return true
-	}
-	if s[i].blockFileNum > s[j].blockFileNum {
-		return false
-	}
-
-	return s[i].fileOffset < s[j].fileOffset
-}
-
 // makeDbErr creates a database.Error given a set of arguments.
 func makeDbErr(c database.ErrorCode, desc string, err error) database.Error {
 	return database.Error{ErrorCode: c, Description: desc, Err: err}

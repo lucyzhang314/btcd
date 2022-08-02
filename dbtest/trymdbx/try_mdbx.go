@@ -13,10 +13,10 @@ import (
 )
 
 func TryMDBX() {
-	//db_put()
-	//db_read()
+	db_put()
+	db_read()
 	//db_put2()
-	db_read2()
+	// db_read2()
 	// db_test_bucket()
 }
 
@@ -46,29 +46,97 @@ func db_put() {
 	}).MustOpen()
 	defer db.Close()
 
-	tx, err := db.BeginRw(context.Background())
-	if err != nil {
-		return
-	}
-	//defer tx.Rollback()
-	defer tx.Commit()
+	db.Update(context.Background(), func(tx kv.RwTx) error {
 
-	c, err := tx.RwCursor(bucket)
-	//c, err := tx.RwCursorDupSort(table)
-	if err != nil {
-		return
-	}
-	//require.NoError(t, err)
-	defer c.Close()
+		for idx := 0; idx < 3; idx++ {
+			ki := []byte(fmt.Sprintf("kex-%d", idx))
+			val := []byte(fmt.Sprintf("value-%d", idx))
+			// fmt.Println("put value result:", tx.Put(bucket, ki, val))
+			tx.Put(bucket, ki, val)
 
-	err = c.Put(key, value)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+			ki = []byte(fmt.Sprintf("key-%d", idx))
+			val = []byte(fmt.Sprintf("value-321-%d", idx))
+			// fmt.Println("put value result:", tx.Put(bucket, ki, val))
+			tx.Put(bucket, ki, val)
 
-	key1, value1, err := c.Seek(key)
-	fmt.Println(key1, value1, err)
+			ki = []byte(fmt.Sprintf("kez-%d", idx))
+			val = []byte(fmt.Sprintf("value-321-%d", idx))
+			// fmt.Println("put value result:", tx.Put(bucket, ki, val))
+			tx.Put(bucket, ki, val)
+		}
+		return nil
+	})
+}
+
+func db_read() {
+	logger := log.New()
+	//db := mdbx.NewMDBX(logger).Path(path).MustOpen()
+	db := mdbx.NewMDBX(logger).Path(dbpath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+		return kv.TableCfg{
+			bucket: kv.TableCfgItem{Flags: dbflags},
+		}
+	}).MustOpen()
+	defer db.Close()
+
+	db.View(context.Background(), func(tx kv.Tx) error {
+
+		cursor, _ := tx.Cursor(bucket)
+		defer cursor.Close()
+
+		kk, val, err := cursor.Current()
+		fmt.Println("--, ", string(kk), string(val), err)
+		count, err := cursor.Count()
+		fmt.Println("--, ", count, err)
+
+		// kk, val, err = cursor.First()
+		// for len(kk) > 0 {
+		// 	fmt.Println("--, ", string(kk), string(val), err)
+		// 	kk, val, err = cursor.Next()
+		// }
+		tx.ForEach(bucket, []byte("key"), func(k, v []byte) error {
+			fmt.Println("-----, ", string(k), string(v), err)
+			return nil
+		})
+		fmt.Println("---------------------------------------------------------")
+
+		tx.ForPrefix(bucket, []byte("key"), func(k, v []byte) error {
+			fmt.Println("-----, ", string(k), string(v), err)
+			return nil
+		})
+		fmt.Println("---------------------------------------------------------")
+
+		kk, val, err = cursor.Seek([]byte("kex"))
+		fmt.Println("--, ", string(kk), string(val), err)
+		count, err = cursor.Count()
+		fmt.Println("--, ", count, err)
+		kk, val, err = cursor.Current()
+		fmt.Println("--, ", string(kk), string(val), err)
+
+		kk, val, err = cursor.Prev()
+		fmt.Println("--, ", string(kk), string(val), err)
+		kk, val, err = cursor.Current()
+		fmt.Println("--, ", string(kk), string(val), err)
+
+		cursor.First()
+		kk, val, err = cursor.Current()
+		fmt.Println("--, ", string(kk), string(val), err)
+
+		cursor.Last()
+		kk, val, err = cursor.Current()
+		fmt.Println("--, ", string(kk), string(val), err)
+
+		fmt.Println("---------------------------------------------------------")
+
+		for ; kk != nil; kk, val, err = cursor.Next() {
+			if err != nil {
+				return err
+			}
+			fmt.Println("--, ", string(kk), string(val), err)
+		}
+		fmt.Println("--------------------------------------------------------- 12345")
+
+		return nil
+	})
 }
 
 func db_test_bucket() {
@@ -145,64 +213,4 @@ func db_test_bucket() {
 
 		return nil
 	})
-
-}
-
-func db_read2() {
-	logger := log.New()
-	//db := mdbx.NewMDBX(logger).Path(path).MustOpen()
-	db := mdbx.NewMDBX(logger).Path(dbpath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-		return kv.TableCfg{
-			bucket: kv.TableCfgItem{Flags: dbflags},
-			//buck1: kv.TableCfgItem{Flags: dbflags},
-		}
-	}).MustOpen()
-	defer db.Close()
-
-	db.View(context.Background(), func(tx kv.Tx) error {
-
-		val, err := tx.GetOne(buck1, key)
-		fmt.Println(val, err)
-
-		return nil
-	})
-}
-
-func db_read() {
-	logger := log.New()
-	//db := mdbx.NewMDBX(logger).Path(path).MustOpen()
-	db := mdbx.NewMDBX(logger).Path(dbpath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
-		return kv.TableCfg{
-			bucket: kv.TableCfgItem{Flags: dbflags},
-		}
-	}).MustOpen()
-	defer db.Close()
-
-	//db.Update(context.Background(), func(tx kv.RwTx) error {
-	//
-	//	tx.Put()
-	//	return nil
-	//})
-	tx, err := db.BeginRo(context.Background())
-	if err != nil {
-		return
-	}
-	defer tx.Rollback()
-
-	c, err := tx.Cursor(bucket)
-	if err != nil {
-		return
-	}
-	defer c.Close()
-
-	c.First()
-
-	key1, value1, err := c.Current()
-	fmt.Println(string(key1), string(value1), err)
-
-	key1, value1, err = c.Seek(key)
-	fmt.Println(string(key1), string(value1), err)
-
-	key1, value1, err = c.Next()
-	fmt.Println(string(key1), string(value1), err)
 }

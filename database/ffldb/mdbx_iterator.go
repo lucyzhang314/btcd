@@ -1,20 +1,25 @@
 package ffldb
 
 import (
+	"bytes"
+
 	"github.com/ledgerwatch/erigon-lib/kv"
 )
 
 // ldbCacheIter wraps a treap iterator to provide the additional functionality
 // needed to satisfy the leveldb iterator.Iterator interface.
 type mdbxIterator struct {
-	cursor kv.Cursor
+	cursor     kv.Cursor
+	prefix     []byte
+	key, value []byte // current key & value
+	lastKey    []byte
 }
 
 // Enforce ldbCacheIterator implements the leveldb iterator.Iterator interface.
 var _ Iterator = (*mdbxIterator)(nil)
 
-func newMdbxIterator(tx kv.Tx) *mdbxIterator {
-	if tx == nil {
+func newMdbxIterator(tx kv.Tx, prefix []byte) *mdbxIterator {
+	if (tx == nil) || (len(prefix) < 1) {
 		return nil
 	}
 
@@ -23,8 +28,12 @@ func newMdbxIterator(tx kv.Tx) *mdbxIterator {
 		return nil
 	}
 
-	csr.First()
-	return &mdbxIterator{cursor: csr}
+	_, _, err = csr.Seek(prefix)
+	if err != nil {
+		return nil
+	}
+
+	return &mdbxIterator{cursor: csr, prefix: prefix}
 }
 
 // Error is only provided to satisfy the iterator interface as there are no
@@ -47,50 +56,106 @@ func (iter *mdbxIterator) SetReleaser(releaser Releaser) {
 // This is part of the leveldb iterator.Iterator interface implementation.
 func (iter *mdbxIterator) Release() {
 	iter.cursor.Close()
+
+	iter.cursor = nil
+	iter.key = nil
+	iter.value = nil
+	iter.prefix = nil
+	iter.lastKey = nil
 }
 
 func (iter *mdbxIterator) Valid() bool {
-	key, _, _ := iter.cursor.Current()
-	return len(key) > 0
+	return iter.key != nil
 }
 
 func (iter *mdbxIterator) First() bool {
-	_, _, err := iter.cursor.First()
-	return err == nil
+	return iter.Seek(iter.prefix)
 }
 
 func (iter *mdbxIterator) Last() bool {
-	_, _, err := iter.cursor.Last()
-	return err == nil
+	if len(iter.lastKey) > 0 {
+		k, v, err := iter.cursor.Seek(iter.lastKey)
+		if err != nil {
+			return false
+		}
+		iter.key = copySlice(k)
+		iter.value = copySlice(v)
+		return true
+	}
+
+	for k, _, err := iter.cursor.Next(); k != nil; k, _, err = iter.cursor.Next() {
+		if err != nil {
+			return false
+		}
+		if bytes.HasPrefix(k, iter.prefix) {
+			continue
+		}
+
+		k, v, err := iter.cursor.Prev()
+		if err == nil {
+			iter.lastKey = copySlice(k)
+			iter.key = iter.lastKey
+			iter.value = copySlice(v)
+		}
+		return err == nil
+	}
+
+	return false
 }
 
 func (iter *mdbxIterator) Next() bool {
-	_, _, err := iter.cursor.Next()
+	k, v, err := iter.cursor.Next()
+	if err == nil {
+		if bytes.HasPrefix(k, iter.prefix) {
+			iter.key = copySlice(k)
+			iter.value = copySlice(v)
+		} else {
+			iter.key = nil // indicate previous is the last
+			iter.value = nil
+
+			k, _, err = iter.cursor.Prev()
+			if (err == nil) && (len(k) > 0) {
+				iter.lastKey = copySlice(k) // indicate this is the "last"
+			}
+			return false
+		}
+	}
 	return err == nil
 }
 
 func (iter *mdbxIterator) Prev() bool {
-	_, _, err := iter.cursor.Prev()
+	k, v, err := iter.cursor.Prev()
+	if err == nil {
+		if bytes.HasPrefix(k, iter.prefix) {
+			iter.key = copySlice(k)
+			iter.value = copySlice(v)
+		} else {
+			iter.cursor.Next()
+
+			iter.key = nil // indicate previous is the first
+			iter.value = nil
+			return false
+		}
+	}
 	return err == nil
 }
 
 func (iter *mdbxIterator) Seek(key []byte) bool {
-	_, _, err := iter.cursor.Seek(key)
-	return err == nil
+	k, v, err := iter.cursor.Seek(iter.prefix)
+	if err == nil {
+		if bytes.HasPrefix(k, iter.prefix) {
+			iter.key = copySlice(k)
+			iter.value = copySlice(v)
+			return true
+		}
+	}
+	return false
 }
 
 func (iter *mdbxIterator) Key() []byte {
-	ki, _, err := iter.cursor.Current()
-	if err != nil {
-		return nil
-	}
-	return ki
+	return iter.key
 }
 
 func (iter *mdbxIterator) Value() []byte {
-	_, val, err := iter.cursor.Current()
-	if err != nil {
-		return nil
-	}
-	return val
+	return iter.value
 }

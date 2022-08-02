@@ -84,7 +84,6 @@ type dbCacheIterator struct {
 	currentIter   Iterator
 	released      bool
 	dbIter        Iterator
-	// dbIter        *mdbxIterator
 }
 
 // Enforce dbCacheIterator implements the leveldb iterator.Iterator interface.
@@ -370,7 +369,6 @@ func (snap *dbCacheSnapshot) NewIterator(slice *Range, tx *transaction) *dbCache
 	}
 
 	ci := &dbCacheIterator{
-		// dbIter:        &mdbxIterator{cursor: cursor},
 		cacheIter:     newLdbCacheIter(snap, slice),
 		cacheSnapshot: snap,
 	}
@@ -379,7 +377,7 @@ func (snap *dbCacheSnapshot) NewIterator(slice *Range, tx *transaction) *dbCache
 	if tx.mdbRwTx != nil {
 		mdbTx = tx.mdbRwTx
 	}
-	ci.dbIter = newMdbxIterator(mdbTx)
+	ci.dbIter = newMdbxIterator(mdbTx, slice.Start)
 
 	return ci
 }
