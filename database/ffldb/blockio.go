@@ -426,7 +426,7 @@ func (s *blockStore) writeData(data []byte, fieldName string) error {
 // in the event of failure.
 //
 // Format: <network><block length><serialized block><checksum>
-func (s *blockStore) writeBlock( /* tx *transaction, blockHeight int32, */ rawBlock []byte) (blockLocation, error) {
+func (s *blockStore) writeBlock(tx *transaction, blockHeight int32, rawBlock []byte) (blockLocation, error) {
 	// Compute how many bytes will be written.
 	// 4 bytes each for block network + 4 bytes for block length +
 	// length of raw block + 4 bytes for checksum.
@@ -465,28 +465,15 @@ func (s *blockStore) writeBlock( /* tx *transaction, blockHeight int32, */ rawBl
 		wc.curOffset = 0
 		wc.Unlock()
 
+		saveFirstBlockHeightInBlockFile(tx, wc.curFileNum, blockHeight)
 		if wc.curFileNum >= maxLocalBlockFilesCount {
-
-			// file number to be deleted at here
 			fileNumToBeDelete := wc.curFileNum - maxLocalBlockFilesCount
-			go s.deleteFileFunc(fileNumToBeDelete)
-
-			// remove obsoleted entry from DB
-			// keyDelete := []byte(blockFileName(fileNumToBeDelete))
-			// tx.Metadata().Delete(keyDelete)
-
-			s.lruMutex.Lock()
-			s.removeOpenFilesLRU(fileNumToBeDelete)
-			s.lruMutex.Unlock()
+			s.cleanOutdatedData(tx, fileNumToBeDelete)
 		}
-
-		// Add new entry to DB
-		// Key:   block file name
-		// Value: height of the first block in a block file
-		// keyAdd := []byte(blockFileName(wc.curFileNum))
-		// var valueAdd [4]byte
-		// byteOrder.PutUint32(valueAdd[:], uint32(blockHeight))
-		// tx.Metadata().Put(keyAdd, valueAdd[:])
+	}
+	if blockHeight == 0 {
+		// special case for genesis block
+		saveFirstBlockHeightInBlockFile(tx, wc.curFileNum, blockHeight)
 	}
 
 	// All writes are done under the write lock for the file to ensure any
@@ -542,8 +529,76 @@ func (s *blockStore) writeBlock( /* tx *transaction, blockHeight int32, */ rawBl
 	return loc, nil
 }
 
-func (s *blockStore) removeOpenFilesLRU(lruFileNum uint32) {
+func saveFirstBlockHeightInBlockFile(tx *transaction, fileNum uint32, blockHeight int32) {
+	// Add new entry to DB
+	// Key:   block file name
+	// Value: height of the first block in a block file
+	keyAdd := []byte(blockFileName(fileNum))
+	var valueAdd [4]byte
+	byteOrder.PutUint32(valueAdd[:], uint32(blockHeight))
+	tx.Metadata().Put(keyAdd, valueAdd[:])
+}
 
+func getFirstBlockHeightInBlockFile(tx *transaction, fileNum uint32) (int32, error) {
+	key := []byte(blockFileName(fileNum))
+	value := tx.Metadata().Get(key)
+	if len(value) < 1 {
+		return -1, fmt.Errorf("no such value in DB, file number:%d", fileNum)
+	}
+	return int32(byteOrder.Uint32(value)), nil
+}
+
+func cleanSpendJournal(tx *transaction, fileNum uint32) {
+	var (
+		//
+		// Note:
+		// these 2 names are defined in <root/path>/blockchain/chainio.go
+		//
+		spendJournalBucketName = []byte("spendjournal")
+		heightIndexBucketName  = []byte("heightidx")
+	)
+
+	loopBlockHeight, err := getFirstBlockHeightInBlockFile(tx, fileNum)
+	endBlockHeight, err2 := getFirstBlockHeightInBlockFile(tx, fileNum+1)
+	if (err != nil) || (err2 != nil) {
+		return
+	}
+	serializedBlockHeight := make([]byte, 4)
+
+	metaBucket := tx.Metadata()
+	journalBucket := metaBucket.Bucket(spendJournalBucketName)
+	heightIdxBucket := metaBucket.Bucket(heightIndexBucketName)
+
+	for ; loopBlockHeight < endBlockHeight; loopBlockHeight++ {
+
+		// first, read block hash
+		byteOrder.PutUint32(serializedBlockHeight, uint32(loopBlockHeight))
+		blockHashBytes := heightIdxBucket.Get(serializedBlockHeight)
+		if blockHashBytes == nil {
+			log.Trace(fmt.Sprintf("no block at height %d exists", loopBlockHeight))
+			continue
+		}
+
+		journalBucket.Delete(blockHashBytes)
+	}
+}
+
+func (s *blockStore) cleanOutdatedData(tx *transaction, fileNumToBeDelete uint32) {
+
+	cleanSpendJournal(tx, fileNumToBeDelete)
+
+	// remove obsoleted entry from DB
+	keyDelete := []byte(blockFileName(fileNumToBeDelete))
+	tx.Metadata().Delete(keyDelete)
+
+	s.lruMutex.Lock()
+	s.removeOpenFilesLRU(fileNumToBeDelete)
+	s.lruMutex.Unlock()
+
+	go s.deleteFileFunc(fileNumToBeDelete)
+}
+
+func (s *blockStore) removeOpenFilesLRU(lruFileNum uint32) {
 	if s.openBlocksLRU.Len() < 1 {
 		return
 	}

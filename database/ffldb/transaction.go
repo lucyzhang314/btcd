@@ -60,9 +60,9 @@ func (s bulkFetchDataSorter) Less(i, j int) bool {
 // pendingBlock houses a block that will be written to disk when the database
 // transaction is committed.
 type pendingBlock struct {
-	hash  *chainhash.Hash
-	bytes []byte
-	// height int32
+	hash   *chainhash.Hash
+	bytes  []byte
+	height int32
 }
 
 // transaction represents a database transaction.  It can either be read-only or
@@ -323,9 +323,9 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	}
 	tx.pendingBlocks[*blockHash] = len(tx.pendingBlockData)
 	tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
-		hash:  blockHash,
-		bytes: blockBytes,
-		// height: block.Height(),
+		hash:   blockHash,
+		bytes:  blockBytes,
+		height: block.Height(),
 	})
 	log.Tracef("Added block %s to pending blocks", blockHash)
 
@@ -793,8 +793,7 @@ func (tx *transaction) writePendingAndCommit() error {
 	// Loop through all of the pending blocks to store and write them.
 	for _, blockData := range tx.pendingBlockData {
 		log.Tracef("Storing block %s", blockData.hash)
-		// location, err := tx.db.store.writeBlock(tx, blockData.height, blockData.bytes)
-		location, err := tx.db.store.writeBlock(blockData.bytes)
+		location, err := tx.db.store.writeBlock(tx, blockData.height, blockData.bytes)
 		if err != nil {
 			rollback()
 			return err
