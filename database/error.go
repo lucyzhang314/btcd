@@ -127,6 +127,9 @@ const (
 	// codes provided by this package.
 	ErrDriverSpecific
 
+	// local DB file hass beed deteted because that outdated
+	ErrLocalFileOutdated
+
 	// numErrorCodes is the maximum error code number used in tests.
 	numErrorCodes
 )
@@ -154,6 +157,7 @@ var errorCodeStrings = map[ErrorCode]string{
 	ErrBlockExists:        "ErrBlockExists",
 	ErrBlockRegionInvalid: "ErrBlockRegionInvalid",
 	ErrDriverSpecific:     "ErrDriverSpecific",
+	ErrLocalFileOutdated:  "ErrLocalFileOutdated",
 }
 
 // String returns the ErrorCode as a human-readable name.

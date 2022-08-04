@@ -273,8 +273,8 @@ func (s *blockStore) openFile(fileNum uint32) (*lockableFile, error) {
 	//
 
 	if s.writeCursor.curFileNum > fileNum+maxLocalBlockFilesCount {
-		err := errors.New("the block file has outdated and not here")
-		return nil, makeDbErr(database.ErrDbDoesNotExist, err.Error(), err)
+		err := errors.New("the block file has outdated and it's not there")
+		return nil, makeDbErr(database.ErrLocalFileOutdated, err.Error(), err)
 	}
 
 	filePath := blockFilePath(s.basePath, fileNum)
