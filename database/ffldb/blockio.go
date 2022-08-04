@@ -46,7 +46,7 @@ const (
 	// NOTE: The current code uses uint32 for all offsets, so this value
 	// must be less than 2^32 (4 GiB).  This is also why it's a typed
 	// constant.
-	maxBlockFileSize uint32 = 512 * 1024 * 1024 // 512 MiB
+	maxBlockFileSize uint32 = 512 * 1024 * 1024 // 512 MiB,   536,870,912
 
 	// blockLocSize is the number of bytes the serialized block location
 	// data that is stored in the block index.
@@ -57,6 +57,12 @@ const (
 	//  [4:8]  File offset (4 bytes)
 	//  [8:12] Block length (4 bytes)
 	blockLocSize = 12
+
+	// maximum local block files count
+	// keep the latest block file in local storage and remove previous block file locally
+	//
+	// this is the latest files count
+	maxLocalBlockFilesCount = uint32(20)
 )
 
 var (
@@ -223,8 +229,11 @@ func serializeBlockLoc(loc blockLocation) []byte {
 
 // blockFilePath return the file path for the provided block file number.
 func blockFilePath(dbPath string, fileNum uint32) string {
-	fileName := fmt.Sprintf(blockFilenameTemplate, fileNum)
-	return filepath.Join(dbPath, fileName)
+	return filepath.Join(dbPath, blockFileName(fileNum))
+}
+
+func blockFileName(fileNum uint32) string {
+	return fmt.Sprintf(blockFilenameTemplate, fileNum)
 }
 
 // openWriteFile returns a file handle for the passed flat file number in
@@ -255,11 +264,23 @@ func (s *blockStore) openWriteFile(fileNum uint32) (filer, error) {
 // for WRITES.
 func (s *blockStore) openFile(fileNum uint32) (*lockableFile, error) {
 	// Open the appropriate file as read-only.
+
+	//
+	// maybe (s.writeCursor.curFileNum - maxLocalBlockFilesCount < 0)
+	// However, all those values are uint32, so using such judgement statement may cause bug
+	//
+	// if s.writeCursor.curFileNum-maxLocalBlockFilesCount > fileNum {
+	//
+
+	if s.writeCursor.curFileNum > fileNum+maxLocalBlockFilesCount {
+		err := errors.New("the block file has outdated and not here")
+		return nil, makeDbErr(database.ErrDbDoesNotExist, err.Error(), err)
+	}
+
 	filePath := blockFilePath(s.basePath, fileNum)
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, makeDbErr(database.ErrDriverSpecific, err.Error(),
-			err)
+		return nil, makeDbErr(database.ErrDriverSpecific, err.Error(), err)
 	}
 	blockFile := &lockableFile{file: file}
 
@@ -277,18 +298,20 @@ func (s *blockStore) openFile(fileNum uint32) (*lockableFile, error) {
 	s.lruMutex.Lock()
 	lruList := s.openBlocksLRU
 	if lruList.Len() >= maxOpenFiles {
-		lruFileNum := lruList.Remove(lruList.Back()).(uint32)
-		oldBlockFile := s.openBlockFiles[lruFileNum]
+		// 	lruFileNum := lruList.Remove(lruList.Back()).(uint32)
+		// 	oldBlockFile := s.openBlockFiles[lruFileNum]
 
-		// Close the old file under the write lock for the file in case
-		// any readers are currently reading from it so it's not closed
-		// out from under them.
-		oldBlockFile.Lock()
-		_ = oldBlockFile.file.Close()
-		oldBlockFile.Unlock()
+		// 	// Close the old file under the write lock for the file in case
+		// 	// any readers are currently reading from it so it's not closed
+		// 	// out from under them.
+		// 	oldBlockFile.Lock()
+		// 	_ = oldBlockFile.file.Close()
+		// 	oldBlockFile.Unlock()
 
-		delete(s.openBlockFiles, lruFileNum)
-		delete(s.fileNumToLRUElem, lruFileNum)
+		// 	delete(s.openBlockFiles, lruFileNum)
+		// 	delete(s.fileNumToLRUElem, lruFileNum)
+		lruFileNum := lruList.Back().Value.(uint32)
+		s.removeOpenFilesLRU(lruFileNum)
 	}
 	s.fileNumToLRUElem[fileNum] = lruList.PushFront(fileNum)
 	s.lruMutex.Unlock()
@@ -403,7 +426,7 @@ func (s *blockStore) writeData(data []byte, fieldName string) error {
 // in the event of failure.
 //
 // Format: <network><block length><serialized block><checksum>
-func (s *blockStore) writeBlock(rawBlock []byte) (blockLocation, error) {
+func (s *blockStore) writeBlock( /* tx *transaction, blockHeight int32, */ rawBlock []byte) (blockLocation, error) {
 	// Compute how many bytes will be written.
 	// 4 bytes each for block network + 4 bytes for block length +
 	// length of raw block + 4 bytes for checksum.
@@ -441,6 +464,29 @@ func (s *blockStore) writeBlock(rawBlock []byte) (blockLocation, error) {
 		wc.curFileNum++
 		wc.curOffset = 0
 		wc.Unlock()
+
+		if wc.curFileNum >= maxLocalBlockFilesCount {
+
+			// file number to be deleted at here
+			fileNumToBeDelete := wc.curFileNum - maxLocalBlockFilesCount
+			go s.deleteFileFunc(fileNumToBeDelete)
+
+			// remove obsoleted entry from DB
+			// keyDelete := []byte(blockFileName(fileNumToBeDelete))
+			// tx.Metadata().Delete(keyDelete)
+
+			s.lruMutex.Lock()
+			s.removeOpenFilesLRU(fileNumToBeDelete)
+			s.lruMutex.Unlock()
+		}
+
+		// Add new entry to DB
+		// Key:   block file name
+		// Value: height of the first block in a block file
+		// keyAdd := []byte(blockFileName(wc.curFileNum))
+		// var valueAdd [4]byte
+		// byteOrder.PutUint32(valueAdd[:], uint32(blockHeight))
+		// tx.Metadata().Put(keyAdd, valueAdd[:])
 	}
 
 	// All writes are done under the write lock for the file to ensure any
@@ -494,6 +540,35 @@ func (s *blockStore) writeBlock(rawBlock []byte) (blockLocation, error) {
 		blockLen:     fullLen,
 	}
 	return loc, nil
+}
+
+func (s *blockStore) removeOpenFilesLRU(lruFileNum uint32) {
+
+	if s.openBlocksLRU.Len() < 1 {
+		return
+	}
+
+	lruList := s.openBlocksLRU
+
+	// count := lruList.Len()
+	// fmt.Println(count)
+	// lruList.Remove(&list.Element{Value: lruFileNum})
+	ele := s.fileNumToLRUElem[lruFileNum]
+	if ele != nil {
+		lruList.Remove(ele)
+	}
+	// count = lruList.Len()
+	// fmt.Println(count)
+
+	oldBlockFile := s.openBlockFiles[lruFileNum]
+	if oldBlockFile != nil {
+		oldBlockFile.Lock()
+		_ = oldBlockFile.file.Close()
+		oldBlockFile.Unlock()
+	}
+
+	delete(s.openBlockFiles, lruFileNum)
+	delete(s.fileNumToLRUElem, lruFileNum)
 }
 
 // readBlock reads the specified block record and returns the serialized block.
@@ -721,23 +796,42 @@ func (s *blockStore) handleRollback(oldBlockFileNum, oldBlockOffset uint32) {
 // current write cursor which is also stored in the metadata.  Thus, it is used
 // to detect unexpected shutdowns in the middle of writes so the block files
 // can be reconciled.
-func scanBlockFiles(dbPath string) (int, uint32) {
-	lastFile := -1
+func (bs *blockStore) scanBlockFiles(curFileNumDB, curOffsetDB uint32) {
+
+	lastFile := uint32(0)
 	fileLen := uint32(0)
-	for i := 0; ; i++ {
-		filePath := blockFilePath(dbPath, uint32(i))
+
+	fileNumIdx := uint32(0)
+	if curFileNumDB > maxLocalBlockFilesCount {
+		fileNumIdx = curFileNumDB - maxLocalBlockFilesCount + 1
+	}
+
+	for ; ; fileNumIdx++ {
+		filePath := blockFilePath(bs.basePath, fileNumIdx)
 		st, err := os.Stat(filePath)
 		if err != nil {
+			if fileNumIdx < curFileNumDB {
+				// maybe this file was delete because it's outdated
+				// continue to lookup next file
+				continue
+			}
+
+			//
+			// Now, fileNumIdx >= curFileNumDB
+			// it's indicates: reached to last file
+			// exit loop
+			//
 			break
 		}
-		lastFile = i
 
+		lastFile = fileNumIdx
 		fileLen = uint32(st.Size())
 	}
 
-	log.Tracef("Scan found latest block file #%d with length %d", lastFile,
-		fileLen)
-	return lastFile, fileLen
+	log.Tracef("Scan found latest block file #%d with length %d", lastFile, fileLen)
+
+	bs.writeCursor.curFileNum = lastFile
+	bs.writeCursor.curOffset = fileLen
 }
 
 // newBlockStore returns a new block store with the current block file number
@@ -746,11 +840,6 @@ func newBlockStore(basePath string, network wire.BitcoinNet) *blockStore {
 	// Look for the end of the latest block to file to determine what the
 	// write cursor position is from the viewpoing of the block files on
 	// disk.
-	fileNum, fileOff := scanBlockFiles(basePath)
-	if fileNum == -1 {
-		fileNum = 0
-		fileOff = 0
-	}
 
 	store := &blockStore{
 		network:          network,
@@ -762,8 +851,8 @@ func newBlockStore(basePath string, network wire.BitcoinNet) *blockStore {
 
 		writeCursor: &writeCursor{
 			curFile:    &lockableFile{},
-			curFileNum: uint32(fileNum),
-			curOffset:  fileOff,
+			curFileNum: 0,
+			curOffset:  0,
 		},
 	}
 	store.openFileFunc = store.openFile

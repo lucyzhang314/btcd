@@ -261,19 +261,17 @@ func fileExists(name string) bool {
 
 // initDB creates the initial buckets and values used by the package.  This is
 // mainly in a separate function for testing purposes.
-func initMDBX(mdb kv.RwDB) error {
-	err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
-		tx.Put(mdbxBucketRoot, bucketizedKey(metadataBucketID, writeLocKeyName), serializeWriteRow(0, 0))
-		tx.Put(mdbxBucketRoot, bucketIndexKey(metadataBucketID, blockIdxBucketName), blockIdxBucketID[:])
-		tx.Put(mdbxBucketRoot, curBucketIDKeyName, blockIdxBucketID[:])
-		return nil
-	})
-	return err
-}
+// func initMDBX(mdb kv.RwDB) error {
+// 	err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
+// 		tx.Put(mdbxBucketRoot, bucketizedKey(metadataBucketID, writeLocKeyName), serializeWriteRow(0, 0))
+// 		tx.Put(mdbxBucketRoot, bucketIndexKey(metadataBucketID, blockIdxBucketName), blockIdxBucketID[:])
+// 		tx.Put(mdbxBucketRoot, curBucketIDKeyName, blockIdxBucketID[:])
+// 		return nil
+// 	})
+// 	return err
+// }
 
-// openDB opens the database at the provided path.  database.ErrDbDoesNotExist
-// is returned if the database doesn't exist and the create flag is not set.
-func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, error) {
+func init_mdbx(dbPath string, network wire.BitcoinNet, create bool) (kv.RwDB, error) {
 	// Error if the database doesn't exist and the create flag is not set.
 	metadataDbPath := filepath.Join(dbPath, metadataDbName)
 	dbExists := fileExists(metadataDbPath)
@@ -297,7 +295,30 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 			// mdbxBucketIndex: kv.TableCfgItem{Flags: kv.Default},
 		}
 	}).MustOpen()
-	// --------- for mdbx
+
+	if create {
+		err := mdb.Update(context.Background(), func(tx kv.RwTx) error {
+			tx.Put(mdbxBucketRoot, bucketizedKey(metadataBucketID, writeLocKeyName), serializeWriteRow(0, 0))
+			tx.Put(mdbxBucketRoot, bucketIndexKey(metadataBucketID, blockIdxBucketName), blockIdxBucketID[:])
+			tx.Put(mdbxBucketRoot, curBucketIDKeyName, blockIdxBucketID[:])
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return mdb, nil
+}
+
+// openDB opens the database at the provided path.  database.ErrDbDoesNotExist
+// is returned if the database doesn't exist and the create flag is not set.
+func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, error) {
+
+	mdb, err := init_mdbx(dbPath, network, create)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create the block store which includes scanning the existing flat
 	// block files to find what the current write cursor position is
@@ -305,12 +326,10 @@ func openDB(dbPath string, network wire.BitcoinNet, create bool) (database.DB, e
 	// database cache which wraps the underlying leveldb database to provide
 	// write caching.
 	store := newBlockStore(dbPath, network)
-
 	cache := newDbCache(mdb, store, defaultCacheSize, defaultFlushSecs)
-
 	pdb := &db{store: store, cache: cache}
 
 	// Perform any reconciliation needed between the block and metadata as
 	// well as database initialization, if needed.
-	return reconcileDB(pdb, create)
+	return reconcileDB(pdb)
 }
