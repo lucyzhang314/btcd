@@ -62,7 +62,7 @@ const (
 	// keep the latest block file in local storage and remove previous block file locally
 	//
 	// this is the latest files count
-	maxLocalBlockFilesCount = uint32(20)
+	maxLocalBlockFilesCount = uint32(200000)
 )
 
 var (

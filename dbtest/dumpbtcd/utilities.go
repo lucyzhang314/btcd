@@ -16,6 +16,10 @@ import (
 
 var (
 	byteOrder = binary.LittleEndian
+	// chainStateKeyName     = []byte("chainstate")
+	// utxoSetBucketName     = []byte("utxosetv2")
+	heightIndexBucketName = []byte("heightidx")
+	hashIndexBucketName   = []byte("hashidx")
 )
 
 const (

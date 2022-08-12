@@ -2,19 +2,28 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package dumpbtcd
+package dumpmdbx
 
 import (
-	"bufio"
-	"bytes"
-	"fmt"
-	"io"
-	"os"
-
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/dbtest/dumpbtcd/lzma"
 	"github.com/btcsuite/btcd/txscript"
 )
+
+type errDeserialize string
+
+// Error implements the error interface.
+func (e errDeserialize) Error() string {
+	return string(e)
+}
+
+// errNotInMainChain signifies that a block hash or height that is not in the
+// main chain was requested.
+type errNotInMainChain string
+
+// Error implements the error interface.
+func (e errNotInMainChain) Error() string {
+	return string(e)
+}
 
 // -----------------------------------------------------------------------------
 // A variable length quantity (VLQ) is an encoding that uses an arbitrary number
@@ -590,65 +599,4 @@ func decodeCompressedTxOut(serialized []byte) (uint64, []byte, int, error) {
 	amount := decompressTxOutAmount(compressedAmount)
 	script := decompressScript(serialized[bytesRead : bytesRead+scriptSize])
 	return amount, script, bytesRead + scriptSize, nil
-}
-
-func compressFile(fileNameIn, fileNameOut string) {
-
-	inputFile, err := os.Open(fileNameIn)
-	if err != nil {
-		return
-	}
-	defer inputFile.Close()
-
-	fi, err := inputFile.Stat()
-	if err != nil {
-		return
-	}
-	fmt.Println(fi.Size())
-
-	buffer := make([]byte, fi.Size())
-	rutxo := bufio.NewReader(inputFile)
-
-	read, err := io.ReadFull(rutxo, buffer)
-	fmt.Println("----", read, err)
-
-	// save utxo to file
-	compressFile, err := os.Create(fileNameOut)
-	if err != nil {
-		return
-	}
-	compressWriter := bufio.NewWriter(compressFile)
-
-	lzmaWriter := lzma.NewWriter(compressWriter)
-	lzmaWriter.Write(buffer)
-	lzmaWriter.Close()
-
-	fmt.Println("compress finished")
-}
-
-func decompressFile(fileNameIn, fileNameOut string) {
-
-	inputFile, err := os.Open(fileNameIn)
-	if err != nil {
-		return
-	}
-
-	defer inputFile.Close()
-
-	lzmaRerader := lzma.NewReader(inputFile)
-	defer lzmaRerader.Close()
-
-	buffer := new(bytes.Buffer)
-	count, err := io.Copy(buffer, lzmaRerader)
-	fmt.Println(count, err)
-
-	// save utxo to file
-	decompressFile, err := os.Create(fileNameOut)
-	if err != nil {
-		return
-	}
-	defer decompressFile.Close()
-
-	decompressFile.Write(buffer.Bytes())
-	fmt.Println("de-compress finished")
 }
