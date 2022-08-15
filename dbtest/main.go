@@ -1,16 +1,10 @@
 package main
 
-import "github.com/btcsuite/btcd/dbtest/dumpmdbx"
-
-//_ "github.com/btcsuite/btcd/database/ffldb"
+import "github.com/btcsuite/btcd/dbtest/ffldbtry"
 
 func main() {
-	// ffldbtry.TryFfldb()
+	ffldbtry.TryFfldb()
 	// trymdbx.TryMDBX()
 	//try_2()
 
-	// dumpbtcd.StartDump()
-	// dumpbtcd.StartRestore()
-
-	dumpmdbx.Start()
 }
