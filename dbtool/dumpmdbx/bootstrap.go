@@ -15,11 +15,6 @@ const (
 )
 
 func Start() {
-
-	// comfil := "/Users/andy/dev/btcd/dbtest/tmp/000000000.fdb.bin"
-	// decompressFile(comfil, comfil+".dec")
-	// return
-
 	if len(os.Args) < 4 {
 		printUsageInfo()
 		return

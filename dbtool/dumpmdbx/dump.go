@@ -16,17 +16,6 @@ import (
 )
 
 const (
-	// bitcoinNet         = wire.MainNet
-	// dbType             = "ffldb"
-	// metadataBucketName = "Metadata"
-	// dumpFilePath       = "/Users/andy/tmp/btcdDumpData/btcd.bin"
-	// dbPathDump         = "/Users/andy/dev/chainData/data.btcd.console.v003/mainnet/blocks_ffldb/metadata"
-	// dbPathDump    = "/Users/andy/dev/store/data.btcd.mdbx.v0.0.6/mainnet/blocks_ffldb/metadata"
-	// dbPathRestore = "/Users/andy/dev/chainData/data.btcd.vscode/mainnet/blocks_ffldb/metadata"
-
-	// spendjournal   = "spendjournal"
-	// utxosetv2      = "utxosetv2"
-
 	mdbxBucketRoot     = "bucketRoot"
 	compressedFilename = "mdbx.dump"
 	blockFileSuffix    = ".fdb"
@@ -39,12 +28,11 @@ var (
 )
 
 func StartDump(dbPathDump, dumpFileDir string) {
-
 	tmpFilename := path.Join(os.TempDir(), fmt.Sprintf("btcd%d.bin", time.Now().Unix()))
 	defer os.Remove(tmpFilename)
+	blockFileDir := path.Join(dbPathDump, subBlockFileDir)
 
 	// dump database
-	blockFileDir := path.Join(dbPathDump, subBlockFileDir)
 	dumpDB(blockFileDir, tmpFilename)
 
 	// make sure target dir existing
@@ -80,7 +68,6 @@ func dumpDB(dbPathDump, tmpFilePath string) {
 	}
 	defer mdb.Close()
 
-	// save utxo to file
 	dumpFile, err := os.Create(tmpFilePath)
 	if err != nil {
 		fmt.Println("open target file failed:", err)

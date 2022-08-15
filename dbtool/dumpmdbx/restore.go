@@ -18,17 +18,12 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 )
 
-const (
-// fdbFileSuffix = ".fdb"
-)
-
 func StartRestore(restoreDir, targetDir string) {
 	firstBlockFile, err := getFirCompressedBlockFile(restoreDir, blockFileSuffix)
 	if err != nil {
 		fmt.Println("restore DB failed, get fist compressed block file failed")
 		return
 	}
-	// index := strings.Index(firstBlockFile, blockFileSuffix) + len(blockFileSuffix)
 
 	targetDir = path.Join(targetDir, subBlockFileDir)
 	mkdir(targetDir)
@@ -39,13 +34,13 @@ func StartRestore(restoreDir, targetDir string) {
 
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("btcd%d.bin", time.Now().Unix()))
 	defer os.Remove(tmpFile)
-	// decompress DB file
+	// decompress DB
 	decompressFile(path.Join(restoreDir, compressedFilename), tmpFile)
 
+	// restore DB
 	dbTargetPath := path.Join(targetDir, metadataDir)
 	mkdir(dbTargetPath)
 	restoreDB(tmpFile, dbTargetPath)
-	// copyBlockfile(restoreDir, dbTargetPath)
 
 	fmt.Println("Congratulations, restore db completed")
 }
@@ -55,15 +50,8 @@ func restoreDB(restoreFilename, dbTargetPath string) {
 		fmt.Printf("source dir: %s not existing.\n", restoreFilename)
 		return
 	}
-	// sourceFilename := path.Join(restoreDir, compressedFilename)
-	// if !fileExists(sourceFilename) {
-	// 	fmt.Printf("source file: %s not existing.\n", sourceFilename)
-	// 	return
-	// }
 
 	logger := mdbxlog.New()
-	// dbpath := path.Join(dbTargetPath, metadataDir)
-	// mkdir(dbpath)
 	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
@@ -102,7 +90,6 @@ func restoreDB(restoreFilename, dbTargetPath string) {
 }
 
 func readKV(reader *bufio.Reader) (key, value []byte) {
-
 	key1, err1 := readBytes16(reader)
 	value1, err2 := readBytes32(reader)
 	if err1 != nil || err2 != nil {
