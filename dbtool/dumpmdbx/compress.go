@@ -11,7 +11,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/btcsuite/btcd/dbtest/dumpbtcd/lzma"
+	"github.com/btcsuite/btcd/dbtool/dumpbtcd/lzma"
 )
 
 const (
