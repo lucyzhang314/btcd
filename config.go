@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/connmgr"
@@ -30,7 +31,6 @@ import (
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/go-socks/socks"
 	flags "github.com/jessevdk/go-flags"
 )
@@ -66,6 +66,8 @@ const (
 	sampleConfigFilename         = "sample-btcd.conf"
 	defaultTxIndex               = false
 	defaultAddrIndex             = false
+	defaultMaxBlockfiles         = 5
+	defaultGenerateSnap          = false
 )
 
 var (
@@ -180,6 +182,8 @@ type config struct {
 	miningAddrs          []btcutil.Address
 	minRelayTxFee        btcutil.Amount
 	whitelists           []*net.IPNet
+	MaxBlockfiles        uint32 `long:"maxblockfiles" description:"Maximum Local Block files."`
+	GenerateSnap         bool   `long:"generatesnap" description:"Generate the latest snap.(default: false)"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -439,6 +443,8 @@ func loadConfig() (*config, []string, error) {
 		Generate:             defaultGenerate,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
+		MaxBlockfiles:        defaultMaxBlockfiles,
+		GenerateSnap:         defaultGenerateSnap,
 	}
 
 	// Service options which are only added on Windows.

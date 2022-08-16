@@ -57,18 +57,22 @@ const (
 	//  [4:8]  File offset (4 bytes)
 	//  [8:12] Block length (4 bytes)
 	blockLocSize = 12
-
-	// maximum local block files count
-	// keep the latest block file in local storage and remove previous block file locally
-	//
-	// this is the latest files count
-	maxLocalBlockFilesCount = uint32(200000)
 )
 
 var (
 	// castagnoli houses the Catagnoli polynomial used for CRC-32 checksums.
 	castagnoli = crc32.MakeTable(crc32.Castagnoli)
+
+	// maximum local block files count
+	// keep the latest block file in local storage and remove previous block file locally
+	//
+	// this is the latest files count
+	maxLocalBlockFilesCount = uint32(5)
 )
+
+func SetMaxBlockfiles(maxBlockfile uint32) {
+	maxLocalBlockFilesCount = maxBlockfile
+}
 
 // filer is an interface which acts very similar to a *os.File and is typically
 // implemented by it.  It exists so the test code can provide mock files for

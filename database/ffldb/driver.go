@@ -72,10 +72,11 @@ func useLogger(logger btclog.Logger) {
 func init() {
 	// Register the driver.
 	driver := database.Driver{
-		DbType:    dbType,
-		Create:    createDBDriver,
-		Open:      openDBDriver,
-		UseLogger: useLogger,
+		DbType:           dbType,
+		Create:           createDBDriver,
+		Open:             openDBDriver,
+		UseLogger:        useLogger,
+		SetMaxBlockfiles: SetMaxBlockfiles,
 	}
 	if err := database.RegisterDriver(driver); err != nil {
 		panic(fmt.Sprintf("Failed to regiser database driver '%s': %v",
