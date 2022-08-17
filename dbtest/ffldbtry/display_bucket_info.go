@@ -117,6 +117,6 @@ func displayBucket(bucket database.Bucket, bucketname []byte, prefix string) {
 
 	// fmt.Println(string(bucketname))
 
-	fmt.Printf("bucketName:%24s totalItems:%9d sizeKey:%5dK sizeValue:%5dK bucketID:%d\r\n", prefix+string(bucketname), totalKey, sizek/1024, sizev/1024, bucket.Info())
+	fmt.Printf("bucketName:%24s totalItems:%9d sizeKey:%5dK sizeValue:%5dK \r\n", prefix+string(bucketname), totalKey, sizek/1024, sizev/1024)
 	// fmt.Printf("bucketName:%24s bucketID:%d\r\n", prefix+string(bucketname), bucket.Info())
 }

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	chunkSize = 128 * 1024 * 1024 // 512M
+	chunkSize = 512 * 1024 * 1024 // 512M
 )
 
 func compressFile(fileNameIn, fileNameOut string) {
