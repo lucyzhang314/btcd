@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"time"
 
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -28,15 +27,21 @@ var (
 )
 
 func StartDump(dbPathDump, dumpFileDir string) {
-	tmpFilename := path.Join(os.TempDir(), fmt.Sprintf("btcd%d.bin", time.Now().Unix()))
+	tmpFilename := generateTempFilename()
 	defer os.Remove(tmpFilename)
 	blockFileDir := path.Join(dbPathDump, subBlockFileDir)
+
+	// prune ffldb buckets
+	pruneBucket(blockFileDir)
+	DisplayBucketInfo(blockFileDir)
 
 	// dump database
 	dumpDB(blockFileDir, tmpFilename)
 
 	// make sure target dir existing
 	mkdir(dumpFileDir)
+
+	// compress temporary DB export file
 	compressFile(tmpFilename, path.Join(dumpFileDir, compressedFilename))
 
 	// compress last block file
@@ -63,14 +68,14 @@ func dumpDB(dbPathDump, tmpFilePath string) {
 		}
 	}).MustOpen()
 	if mdb == nil {
-		fmt.Println("open database failed")
+		fmt.Println("open database failed, DB Path:", dbpath)
 		return
 	}
 	defer mdb.Close()
 
 	dumpFile, err := os.Create(tmpFilePath)
 	if err != nil {
-		fmt.Println("open target file failed:", err)
+		fmt.Println("open temporary file failed:", err)
 		return
 	}
 	defer dumpFile.Close()

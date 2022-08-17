@@ -3,11 +3,17 @@ package dumpmdbx
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "github.com/btcsuite/btcd/database/ffldb"
 )
+
+func generateTempFilename() string {
+	return path.Join(os.TempDir(), fmt.Sprintf("btcd%d.tmp", time.Now().UnixNano()))
+}
 
 func fileExists(name string) bool {
 	if _, err := os.Stat(name); err != nil {
@@ -60,7 +66,7 @@ func getLastBlockFile(dirPth, suffix string) (string, error) {
 // during restore
 // get the first compressed block file in restore dir
 //
-func getFirCompressedBlockFile(dirPth, suffix string) (string, error) {
+func getFirstCompressedBlockFile(dirPth, suffix string) (string, error) {
 	retName := ""
 	err := filepath.Walk(dirPth, func(filename string, fi os.FileInfo, err error) error {
 		if fi.IsDir() {

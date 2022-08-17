@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	dump            = "dump"
-	restore         = "restore"
+	dumpCmd         = "dump"
+	restoreCmd      = "restore"
 	subBlockFileDir = "mainnet/blocks_ffldb"
 	metadataDir     = "metadata"
 )
@@ -20,11 +20,11 @@ func Start() {
 		return
 	}
 
-	if dump == os.Args[1] {
+	if dumpCmd == os.Args[1] {
 		sourceDBPath := os.Args[2]
 		targeFileName := os.Args[3]
 		StartDump(sourceDBPath, targeFileName)
-	} else if restore == os.Args[1] {
+	} else if restoreCmd == os.Args[1] {
 		sourceDir := os.Args[2]
 		targeDir := os.Args[3]
 		StartRestore(sourceDir, targeDir)

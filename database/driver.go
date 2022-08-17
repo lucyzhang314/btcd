@@ -80,17 +80,19 @@ func Create(dbType string, args ...interface{}) (DB, error) {
 // driver for further details.
 //
 // ErrDbUnknownType will be returned if the the database type is not registered.
-func Open(maxBlockfile uint32, dbType string, args ...interface{}) (DB, error) {
+func Open(dbType string, args ...interface{}) (DB, error) {
 	drv, exists := drivers[dbType]
 	if !exists {
 		str := fmt.Sprintf("driver %q is not registered", dbType)
 		return nil, makeError(ErrDbUnknownType, str, nil)
 	}
 
-	drv.SetMaxBlockfiles(maxBlockfile)
 	return drv.Open(args...)
 }
 
-// func SetMaxBlockfiles() {
-// 	// ffldb.SetMaxBlockfiles(maxBlockfile)
-// }
+func SetMaxBlockfiles(dbType string, maxBlockfile uint32) {
+	drv, exists := drivers[dbType]
+	if exists {
+		drv.SetMaxBlockfiles(maxBlockfile)
+	}
+}

@@ -1,4 +1,4 @@
-package ffldbtry
+package dumpmdbx
 
 import (
 	"fmt"
@@ -10,26 +10,26 @@ import (
 
 const (
 	bitcoinNet         = wire.MainNet
-	metadataBucketName = "Metadata"
 	dbType             = "ffldb"
-	dbPath             = "/Users/andy/dev/chainData/data.btcd.original.store/mainnet/blocks_ffldb"
+	metadataBucketName = "Metadata"
 )
 
 var (
-	blockheaderidx      = []byte("blockheaderidx")
+	blockheaderidx = []byte("blockheaderidx")
+	hashidx        = []byte("hashidx")
+	heightidx      = []byte("heightidx")
+	spendjournal   = []byte("spendjournal")
+	utxosetv2      = []byte("utxosetv2")
+	idxtips        = []byte("idxtips")
+
 	cfindexparentbucket = []byte("cfindexparentbucket")
 	cf0byhashidx        = []byte("cf0byhashidx")
-	cf0hashbyhashidx    = []byte("cf0hashbyhashidx")
 	cf0headerbyhashidx  = []byte("cf0headerbyhashidx")
-	ffldbblockidx       = []byte("ffldb-blockidx")
-	hashidx             = []byte("hashidx")
-	heightidx           = []byte("heightidx")
-	idxtips             = []byte("idxtips")
-	spendjournal        = []byte("spendjournal")
-	utxosetv2           = []byte("utxosetv2")
+	cf0hashbyhashidx    = []byte("cf0hashbyhashidx")
 )
 
-func PruneBucket() {
+// prune ffldb bucket before dump MDBX database
+func pruneBucket(dbPath string) {
 	db, err := database.Open(dbType, dbPath, bitcoinNet)
 	if err != nil {
 		return
@@ -37,35 +37,52 @@ func PruneBucket() {
 	defer db.Close()
 
 	db.Update(func(tx database.Tx) error {
-		// tx.Metadata().DeleteBucket(blockheaderidx)
-		// tx.Metadata().DeleteBucket(cfindexparentbucket)
-
 		tx.Metadata().Bucket(cfindexparentbucket).DeleteBucket(cf0byhashidx)
-		// tx.Metadata().Bucket(cfindexparentbucket).CreateBucketIfNotExists(cf0byhashidx)
-
 		tx.Metadata().Bucket(cfindexparentbucket).DeleteBucket(cf0hashbyhashidx)
-		// tx.Metadata().Bucket(cfindexparentbucket).CreateBucketIfNotExists(cf0hashbyhashidx)
-
 		tx.Metadata().DeleteBucket(hashidx)
-		// tx.Metadata().CreateBucketIfNotExists(hashidx)
-
 		tx.Metadata().DeleteBucket(heightidx)
-		// tx.Metadata().CreateBucketIfNotExists(heightidx)
-
 		tx.Metadata().DeleteBucket(spendjournal)
-		// tx.Metadata().CreateBucketIfNotExists(spendjournal)
-
-		// tx.Metadata().Bucket(cfindexparentbucket).DeleteBucket(cf0headerbyhashidx)
-		// tx.Metadata().DeleteBucket(ffldbblockidx)
-		// tx.Metadata().DeleteBucket(idxtips)
-		// tx.Metadata().DeleteBucket(utxosetv2)
 		return nil
 	})
 
 	fmt.Println("Prune db finished")
 }
 
-func DisplayBucketInfo() {
+// create ffldb bucket before restore MDBX database
+func createBuckets(dbPath string) {
+
+	db, err := database.Open(dbType, dbPath, bitcoinNet)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+
+	db.Update(func(tx database.Tx) error {
+
+		metaBucket := tx.Metadata()
+
+		//
+		// WARNING:
+		// create bucket sequence is very critical, DON'T change them !
+		// It's MUST be the same with BTCD
+		//
+		metaBucket.CreateBucketIfNotExists(blockheaderidx)
+		metaBucket.CreateBucketIfNotExists(hashidx)
+		metaBucket.CreateBucketIfNotExists(heightidx)
+		metaBucket.CreateBucketIfNotExists(spendjournal)
+		metaBucket.CreateBucketIfNotExists(utxosetv2)
+		metaBucket.CreateBucketIfNotExists(idxtips)
+
+		metaBucket.CreateBucketIfNotExists(cfindexparentbucket)
+		metaBucket.Bucket(cfindexparentbucket).CreateBucketIfNotExists(cf0byhashidx)
+		metaBucket.Bucket(cfindexparentbucket).CreateBucketIfNotExists(cf0headerbyhashidx)
+		metaBucket.Bucket(cfindexparentbucket).CreateBucketIfNotExists(cf0hashbyhashidx)
+
+		return nil
+	})
+}
+
+func DisplayBucketInfo(dbPath string) {
 	db, err := database.Open(dbType, dbPath, bitcoinNet)
 	if err != nil {
 		return

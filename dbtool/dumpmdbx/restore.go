@@ -9,8 +9,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
-	"time"
 
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/ledgerwatch/erigon-lib/kv"
@@ -19,7 +17,7 @@ import (
 )
 
 func StartRestore(restoreDir, targetDir string) {
-	firstBlockFile, err := getFirCompressedBlockFile(restoreDir, blockFileSuffix)
+	firstBlockFile, err := getFirstCompressedBlockFile(restoreDir, blockFileSuffix)
 	if err != nil {
 		fmt.Println("restore DB failed, get fist compressed block file failed")
 		return
@@ -32,17 +30,31 @@ func StartRestore(restoreDir, targetDir string) {
 	blockFilename := firstBlockFile[:len(firstBlockFile)-5] // ".0001"
 	decompressFile(path.Join(restoreDir, blockFilename), path.Join(targetDir, blockFilename))
 
-	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("btcd%d.bin", time.Now().Unix()))
+	tmpFile := generateTempFilename()
 	defer os.Remove(tmpFile)
-	// decompress DB
+	// decompress DB to a temporary file
 	decompressFile(path.Join(restoreDir, compressedFilename), tmpFile)
 
-	// restore DB
 	dbTargetPath := path.Join(targetDir, metadataDir)
 	mkdir(dbTargetPath)
+
+	createDB(dbTargetPath)
+	createBuckets(targetDir)
+
+	// restore DB
 	restoreDB(tmpFile, dbTargetPath)
 
 	fmt.Println("Congratulations, restore db completed")
+}
+
+func createDB(dbTargetPath string) {
+	logger := mdbxlog.New()
+	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+		return kv.TableCfg{
+			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
+		}
+	}).MustOpen()
+	defer mdb.Close()
 }
 
 func restoreDB(restoreFilename, dbTargetPath string) {
@@ -57,6 +69,7 @@ func restoreDB(restoreFilename, dbTargetPath string) {
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
 		}
 	}).MustOpen()
+	defer mdb.Close()
 
 	fmt.Println("starting to restore DB:", restoreFilename)
 	totalItems := uint64(0)
