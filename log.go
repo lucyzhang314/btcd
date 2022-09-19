@@ -7,6 +7,8 @@ package main
 
 import (
 	"fmt"
+	prefixed "github.com/btcsuite/btcd/btcutil/logrus-prefixed-formatter"
+	"github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
 
@@ -22,7 +24,6 @@ import (
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/txscript"
 
-	"github.com/btcsuite/btclog"
 	"github.com/jrick/logrotate/rotator"
 )
 
@@ -45,34 +46,35 @@ func (logWriter) Write(p []byte) (n int, err error) {
 // log file.  This must be performed early during application startup by calling
 // initLogRotator.
 var (
-	// backendLog is the logging backend used to create all subsystem loggers.
-	// The backend must not be used before the log rotator has been initialized,
-	// or data races and/or nil pointer dereferences will occur.
-	backendLog = btclog.NewBackend(logWriter{})
-
 	// logRotator is one of the logging outputs.  It should be closed on
 	// application shutdown.
 	logRotator *rotator.Rotator
 
-	adxrLog = backendLog.Logger("ADXR")
-	amgrLog = backendLog.Logger("AMGR")
-	cmgrLog = backendLog.Logger("CMGR")
-	bcdbLog = backendLog.Logger("BCDB")
-	btcdLog = backendLog.Logger("BTCD")
-	chanLog = backendLog.Logger("CHAN")
-	discLog = backendLog.Logger("DISC")
-	indxLog = backendLog.Logger("INDX")
-	minrLog = backendLog.Logger("MINR")
-	peerLog = backendLog.Logger("PEER")
-	rpcsLog = backendLog.Logger("RPCS")
-	scrpLog = backendLog.Logger("SCRP")
-	srvrLog = backendLog.Logger("SRVR")
-	syncLog = backendLog.Logger("SYNC")
-	txmpLog = backendLog.Logger("TXMP")
+	adxrLog = logrus.WithField("prefix", "ADXR")
+	amgrLog = logrus.WithField("prefix", "AMGR")
+	cmgrLog = logrus.WithField("prefix", "CMGR")
+	bcdbLog = logrus.WithField("prefix", "BCDB")
+	btcdLog = logrus.WithField("prefix", "BTCD")
+	chanLog = logrus.WithField("prefix", "CHAN")
+	discLog = logrus.WithField("prefix", "DISC")
+	indxLog = logrus.WithField("prefix", "INDX")
+	minrLog = logrus.WithField("prefix", "MINR")
+	peerLog = logrus.WithField("prefix", "PEER")
+	rpcsLog = logrus.WithField("prefix", "RPCS")
+	scrpLog = logrus.WithField("prefix", "SCRP")
+	srvrLog = logrus.WithField("prefix", "SRVR")
+	syncLog = logrus.WithField("prefix", "SYNC")
+	txmpLog = logrus.WithField("prefix", "TXMP")
 )
 
 // Initialize package-global logger variables.
 func init() {
+	formatter := new(prefixed.TextFormatter)
+	formatter.TimestampFormat = "2006-01-02 15:04:05"
+	formatter.FullTimestamp = true
+	formatter.DisableColors = false
+	logrus.SetFormatter(formatter)
+
 	addrmgr.UseLogger(amgrLog)
 	connmgr.UseLogger(cmgrLog)
 	database.UseLogger(bcdbLog)
@@ -87,7 +89,7 @@ func init() {
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.
-var subsystemLoggers = map[string]btclog.Logger{
+var subsystemLoggers = map[string]*logrus.Entry{
 	"ADXR": adxrLog,
 	"AMGR": amgrLog,
 	"CMGR": cmgrLog,
@@ -135,8 +137,8 @@ func setLogLevel(subsystemID string, logLevel string) {
 	}
 
 	// Defaults to info if the log level is invalid.
-	level, _ := btclog.LevelFromString(logLevel)
-	logger.SetLevel(level)
+	level, _ := logrus.ParseLevel(logLevel)
+	logger.Logger.SetLevel(level)
 }
 
 // setLogLevels sets the log level for all subsystem loggers to the passed

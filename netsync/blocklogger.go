@@ -5,10 +5,10 @@
 package netsync
 
 import (
+	"github.com/sirupsen/logrus"
 	"sync"
 	"time"
 
-	"github.com/btcsuite/btclog"
 	"github.com/btcsuite/btcd/btcutil"
 )
 
@@ -20,16 +20,17 @@ type blockProgressLogger struct {
 	receivedLogTx     int64
 	lastBlockLogTime  time.Time
 
-	subsystemLogger btclog.Logger
+	subsystemLogger *logrus.Entry
 	progressAction  string
 	sync.Mutex
 }
 
 // newBlockProgressLogger returns a new block progress logger.
 // The progress message is templated as follows:
-//  {progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
-//  ({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
-func newBlockProgressLogger(progressMessage string, logger btclog.Logger) *blockProgressLogger {
+//
+//	{progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
+//	({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
+func newBlockProgressLogger(progressMessage string, logger *logrus.Entry) *blockProgressLogger {
 	return &blockProgressLogger{
 		lastBlockLogTime: time.Now(),
 		progressAction:   progressMessage,
