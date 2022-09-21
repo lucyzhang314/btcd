@@ -305,7 +305,7 @@ func loadBlockDB(ctx context.Context) (database.DB, error) {
 		}
 
 		if activeNetParams.Net == wire.MainNet && !cfg.NoClipDB {
-			btcdLog.Info("start download clipdb")
+			clipDBLog.Info("start download clipdb")
 			clipdbPath := filepath.Join(cfg.DataDir, "clipdb")
 			os.MkdirAll(clipdbPath, 0700)
 			c, err := btdownoad.NewClient(clipdbPath, btdownoad.DefaultTorrentPort)
@@ -313,7 +313,7 @@ func loadBlockDB(ctx context.Context) (database.DB, error) {
 				return nil, err
 			}
 			t := btdownoad.LatestTorrent()
-			if err := c.Download(ctx, t, btcdLog); nil != err {
+			if err := c.Download(ctx, t, clipDBLog); nil != err {
 				return nil, err
 			}
 			// uncompress
@@ -321,20 +321,20 @@ func loadBlockDB(ctx context.Context) (database.DB, error) {
 			to := filepath.Join(cfg.DataDir, "tmp") // temp dir
 			os.MkdirAll(to, 0700)
 			defer os.RemoveAll(to)
-			btcdLog.Infof("start un compress clipDB from %s to %s", from, to)
+			clipDBLog.Infof("start un compress clipDB from %s to %s", from, to)
 			files, err := btdownoad.Uncompress(ctx, from, to)
 			if nil != err {
 				return nil, err
 			}
-			btcdLog.Infof("un compressed files: %s", strings.Join(files, ","))
+			clipDBLog.Infof("un compressed files: %s", strings.Join(files, ","))
 			// import data
-			btcdLog.Info("start restore clipDB data")
-			if err := dumpmdbx.StartRestore(to, dbPath, btcdLog); nil != err {
+			clipDBLog.Info("start restore clipDB data")
+			if err := dumpmdbx.StartRestore(ctx, to, dbPath, clipDBLog); nil != err {
 				return nil, err
 			}
 
 			// database reopen
-			btcdLog.Info("open clipDB.....")
+			clipDBLog.Info("open clipDB.....")
 			db, err = database.Open(cfg.DbType, dbPath, activeNetParams.Net)
 			if err != nil {
 				return nil, err

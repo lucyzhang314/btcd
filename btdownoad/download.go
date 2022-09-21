@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/btcsuite/btclog"
+	"github.com/sirupsen/logrus"
 	"io"
 	"net/http"
 	"os"
@@ -62,7 +62,7 @@ func (c *client) TorrentClient() (*torrent.Client, error) {
 	return tc, nil
 }
 
-func (c *client) Download(ctx context.Context, t Torrent, log btclog.Logger) error {
+func (c *client) Download(ctx context.Context, t Torrent, log *logrus.Entry) error {
 	tc, err := c.TorrentClient()
 	if nil != err {
 		return err

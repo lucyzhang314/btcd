@@ -6,8 +6,7 @@ package database
 
 import (
 	"fmt"
-
-	"github.com/btcsuite/btclog"
+	"github.com/sirupsen/logrus"
 )
 
 // Driver defines a structure for backend drivers to use when they registered
@@ -28,7 +27,7 @@ type Driver struct {
 	Open func(args ...interface{}) (DB, error)
 
 	// UseLogger uses a specified Logger to output package logging info.
-	UseLogger func(logger btclog.Logger)
+	UseLogger func(logger *logrus.Entry)
 
 	SetMaxBlockfiles func(maxBlockfile uint32)
 }

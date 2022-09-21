@@ -8,11 +8,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/btcsuite/btcd/dbtool/dumpbtcd/lzma"
 	"io"
 	"os"
 
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/dbtest/dumpbtcd/lzma"
 	"github.com/btcsuite/btcd/txscript"
 )
 

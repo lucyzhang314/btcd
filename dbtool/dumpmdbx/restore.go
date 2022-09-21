@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/btcsuite/btclog"
+	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 	"path"
@@ -17,7 +17,7 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 )
 
-func StartRestore(restoreDir, targetDir string, log btclog.Logger) error {
+func StartRestore(ctx context.Context, restoreDir, targetDir string, log *logrus.Entry) error {
 	firstBlockFile, err := getFirstCompressedBlockFile(restoreDir, blockFileSuffix)
 	if err != nil {
 		log.Error("restore DB failed, get fist compressed block file failed")
@@ -53,7 +53,7 @@ func StartRestore(restoreDir, targetDir string, log btclog.Logger) error {
 	}
 
 	// restore DB
-	return restoreDB(tmpFile, dbTargetPath, log)
+	return restoreDB(ctx, tmpFile, dbTargetPath, log)
 }
 
 func createDB(dbTargetPath string) {
@@ -66,7 +66,7 @@ func createDB(dbTargetPath string) {
 	defer mdb.Close()
 }
 
-func restoreDB(restoreFilename, dbTargetPath string, log btclog.Logger) error {
+func restoreDB(ctx context.Context, restoreFilename, dbTargetPath string, log *logrus.Entry) error {
 	if !fileExists(restoreFilename) {
 		return fmt.Errorf("source dir: %s not existing.\n", restoreFilename)
 	}
@@ -81,7 +81,6 @@ func restoreDB(restoreFilename, dbTargetPath string, log btclog.Logger) error {
 
 	log.Info("starting to restore DB:", restoreFilename)
 	totalItems := uint64(0)
-	ctx := context.Background()
 	err := mdb.Update(ctx, func(tx kv.RwTx) error {
 		restorefile, err := os.Open(restoreFilename)
 		if err != nil {
