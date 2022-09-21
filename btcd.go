@@ -5,7 +5,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/indexers"
+	"github.com/btcsuite/btcd/btdownoad"
+	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/dbtool/dumpmdbx"
+	"github.com/btcsuite/btcd/limits"
+	"github.com/btcsuite/btcd/ossec"
+	"github.com/btcsuite/btcd/wire"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -14,11 +22,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-
-	"github.com/btcsuite/btcd/blockchain/indexers"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/limits"
-	"github.com/btcsuite/btcd/ossec"
+	"strings"
 )
 
 const (
@@ -99,8 +103,16 @@ func btcdMain(serverChan chan<- *server) error {
 		return nil
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-interrupt:
+			cancel()
+		}
+	}()
+
 	// Load the block database.
-	db, err := loadBlockDB()
+	db, err := loadBlockDB(ctx)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return err
@@ -259,7 +271,7 @@ func warnMultipleDBs() {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadBlockDB() (database.DB, error) {
+func loadBlockDB(ctx context.Context) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -289,18 +301,54 @@ func loadBlockDB() (database.DB, error) {
 		// exist.
 		if dbErr, ok := err.(database.Error); !ok || dbErr.ErrorCode !=
 			database.ErrDbDoesNotExist {
-
 			return nil, err
 		}
 
-		// Create the db if it does not exist.
-		err = os.MkdirAll(cfg.DataDir, 0700)
-		if err != nil {
-			return nil, err
-		}
-		db, err = database.Create(cfg.DbType, dbPath, activeNetParams.Net)
-		if err != nil {
-			return nil, err
+		if activeNetParams.Net == wire.MainNet && !cfg.NoClipDB {
+			btcdLog.Info("start download clipdb")
+			clipdbPath := filepath.Join(cfg.DataDir, "clipdb")
+			os.MkdirAll(clipdbPath, 0700)
+			c, err := btdownoad.NewClient(clipdbPath, btdownoad.DefaultTorrentPort)
+			if nil != err {
+				return nil, err
+			}
+			t := btdownoad.LatestTorrent()
+			if err := c.Download(ctx, t, btcdLog); nil != err {
+				return nil, err
+			}
+			// uncompress
+			from := filepath.Join(clipdbPath, strings.TrimRight(t.Filename(), ".torrent"))
+			to := filepath.Join(cfg.DataDir, "tmp") // temp dir
+			os.MkdirAll(to, 0700)
+			defer os.RemoveAll(to)
+			btcdLog.Infof("start un compress clipDB from %s to %s", from, to)
+			files, err := btdownoad.Uncompress(ctx, from, to)
+			if nil != err {
+				return nil, err
+			}
+			btcdLog.Infof("un compressed files: %s", strings.Join(files, ","))
+			// import data
+			btcdLog.Info("start restore clipDB data")
+			if err := dumpmdbx.StartRestore(to, dbPath, btcdLog); nil != err {
+				return nil, err
+			}
+
+			// database reopen
+			btcdLog.Info("open clipDB.....")
+			db, err = database.Open(cfg.DbType, dbPath, activeNetParams.Net)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// Create the db if it does not exist.
+			err = os.MkdirAll(cfg.DataDir, 0700)
+			if err != nil {
+				return nil, err
+			}
+			db, err = database.Create(cfg.DbType, dbPath, activeNetParams.Net)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

@@ -49,15 +49,15 @@ func pruneBucket(dbPath string) {
 }
 
 // create ffldb bucket before restore MDBX database
-func createBuckets(dbPath string) {
+func createBuckets(dbPath string) error {
 
 	db, err := database.Open(dbType, dbPath, bitcoinNet)
 	if err != nil {
-		return
+		return err
 	}
 	defer db.Close()
 
-	db.Update(func(tx database.Tx) error {
+	err = db.Update(func(tx database.Tx) error {
 
 		metaBucket := tx.Metadata()
 
@@ -80,6 +80,7 @@ func createBuckets(dbPath string) {
 
 		return nil
 	})
+	return err
 }
 
 func DisplayBucketInfo(dbPath string) {

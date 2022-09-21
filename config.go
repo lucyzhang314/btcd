@@ -184,6 +184,7 @@ type config struct {
 	whitelists           []*net.IPNet
 	MaxBlockfiles        uint32 `long:"maxblockfiles" description:"Maximum Local Block files."`
 	GenerateSnap         bool   `long:"generatesnap" description:"Generate the latest snap.(default: false)"`
+	NoClipDB             bool   `long:"noclipdb" description:"when first set up use the latest clipped db"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on

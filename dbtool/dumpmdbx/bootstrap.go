@@ -2,6 +2,7 @@ package dumpmdbx
 
 import (
 	"fmt"
+	"github.com/btcsuite/btclog"
 	"os"
 
 	_ "github.com/btcsuite/btcd/database/ffldb"
@@ -27,7 +28,7 @@ func Start() {
 	} else if restoreCmd == os.Args[1] {
 		sourceDir := os.Args[2]
 		targeDir := os.Args[3]
-		StartRestore(sourceDir, targeDir)
+		StartRestore(sourceDir, targeDir, btclog.Disabled)
 	} else {
 		printUsageInfo()
 		return

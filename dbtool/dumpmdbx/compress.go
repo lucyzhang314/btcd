@@ -54,11 +54,11 @@ func compressFile(fileNameIn, fileNameOut string) {
 	fmt.Println("compress finished")
 }
 
-func decompressFile(fileNameIn, fileNameOut string) {
+func decompressFile(fileNameIn, fileNameOut string) error {
 
 	decompressFile, err := os.Create(fileNameOut)
 	if err != nil {
-		return
+		return err
 	}
 	defer decompressFile.Close()
 
@@ -67,9 +67,12 @@ func decompressFile(fileNameIn, fileNameOut string) {
 	for {
 		loopIdx++
 		readFilename := buildFilename(fileNameIn, loopIdx)
+		if !fileExists(readFilename) {
+			break
+		}
 		inputFile, err := os.Open(readFilename)
 		if err != nil {
-			break
+			return err
 		}
 
 		lzmaRerader := lzma.NewReader(inputFile)
@@ -77,15 +80,16 @@ func decompressFile(fileNameIn, fileNameOut string) {
 		count, err := io.Copy(buffer, lzmaRerader)
 		if err != nil {
 			fmt.Println("de-compress failed:", err)
-			break
+			return err
 		}
 		fmt.Println("de-compress chunk:", loopIdx, count)
 
-		decompressFile.Write(buffer.Bytes())
+		if _, err := decompressFile.Write(buffer.Bytes()); nil != err {
+			return err
+		}
 
 		lzmaRerader.Close()
 		inputFile.Close()
 	}
-
-	fmt.Println("de-compress finished:", fileNameIn)
+	return err
 }

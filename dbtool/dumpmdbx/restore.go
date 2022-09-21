@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btclog"
 	"io"
 	"os"
 	"path"
@@ -16,35 +17,43 @@ import (
 	mdbxlog "github.com/ledgerwatch/log/v3"
 )
 
-func StartRestore(restoreDir, targetDir string) {
+func StartRestore(restoreDir, targetDir string, log btclog.Logger) error {
 	firstBlockFile, err := getFirstCompressedBlockFile(restoreDir, blockFileSuffix)
 	if err != nil {
-		fmt.Println("restore DB failed, get fist compressed block file failed")
-		return
+		log.Error("restore DB failed, get fist compressed block file failed")
+		return err
 	}
 
-	targetDir = path.Join(targetDir, subBlockFileDir)
-	mkdir(targetDir)
+	// targetDir = path.Join(targetDir, subBlockFileDir)
+	if err := mkdir(targetDir); nil != err {
+		return err
+	}
 
 	// decompress block file
 	blockFilename := firstBlockFile[:len(firstBlockFile)-5] // ".0001"
-	decompressFile(path.Join(restoreDir, blockFilename), path.Join(targetDir, blockFilename))
+	if err := decompressFile(path.Join(restoreDir, blockFilename), path.Join(targetDir, blockFilename)); nil != err {
+		return err
+	}
 
 	tmpFile := generateTempFilename()
 	defer os.Remove(tmpFile)
 	// decompress DB to a temporary file
-	decompressFile(path.Join(restoreDir, compressedFilename), tmpFile)
+	if err := decompressFile(path.Join(restoreDir, compressedFilename), tmpFile); nil != err {
+		return err
+	}
 
 	dbTargetPath := path.Join(targetDir, metadataDir)
-	mkdir(dbTargetPath)
+	if err := mkdir(dbTargetPath); nil != err {
+		return err
+	}
 
 	createDB(dbTargetPath)
-	createBuckets(targetDir)
+	if err := createBuckets(targetDir); nil != err {
+		return err
+	}
 
 	// restore DB
-	restoreDB(tmpFile, dbTargetPath)
-
-	fmt.Println("Congratulations, restore db completed")
+	return restoreDB(tmpFile, dbTargetPath, log)
 }
 
 func createDB(dbTargetPath string) {
@@ -57,10 +66,9 @@ func createDB(dbTargetPath string) {
 	defer mdb.Close()
 }
 
-func restoreDB(restoreFilename, dbTargetPath string) {
+func restoreDB(restoreFilename, dbTargetPath string, log btclog.Logger) error {
 	if !fileExists(restoreFilename) {
-		fmt.Printf("source dir: %s not existing.\n", restoreFilename)
-		return
+		return fmt.Errorf("source dir: %s not existing.\n", restoreFilename)
 	}
 
 	logger := mdbxlog.New()
@@ -71,7 +79,7 @@ func restoreDB(restoreFilename, dbTargetPath string) {
 	}).MustOpen()
 	defer mdb.Close()
 
-	fmt.Println("starting to restore DB:", restoreFilename)
+	log.Info("starting to restore DB:", restoreFilename)
 	totalItems := uint64(0)
 	ctx := context.Background()
 	err := mdb.Update(ctx, func(tx kv.RwTx) error {
@@ -87,19 +95,22 @@ func restoreDB(restoreFilename, dbTargetPath string) {
 			if len(key) < 1 {
 				break
 			}
-			tx.Put(mdbxBucketRoot, key, value)
+			if err := tx.Put(mdbxBucketRoot, key, value); nil != err {
+				return err
+			}
 
 			if (totalItems % infoStep) == 0 {
-				fmt.Println("restore DB sequence:", totalItems) //, string(key), string(value))
+				log.Info("restore DB sequence:", totalItems) //, string(key), string(value))
 			}
 			totalItems++
 		}
 
-		fmt.Println("flushing data to DB, please wait a moment")
+		log.Info("flushing data to DB, please wait a moment")
 		return nil
 	})
 
-	fmt.Println("finished restore DB, totalItems:", totalItems, err)
+	log.Info("finished restore DB, totalItems:", totalItems, err)
+	return err
 }
 
 func readKV(reader *bufio.Reader) (key, value []byte) {
