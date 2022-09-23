@@ -5,33 +5,22 @@
 package database
 
 import (
-	"github.com/btcsuite/btclog"
+	"github.com/sirupsen/logrus"
 )
 
 // log is a logger that is initialized with no output filters.  This
 // means the package will not perform any logging by default until the caller
 // requests it.
-var log btclog.Logger
-
-// The default amount of logging is none.
-func init() {
-	DisableLog()
-}
-
-// DisableLog disables all library log output.  Logging output is disabled
-// by default until UseLogger is called.
-func DisableLog() {
-	log = btclog.Disabled
-}
+var log *logrus.Entry
 
 // UseLogger uses a specified Logger to output package logging info.
-func UseLogger(logger btclog.Logger) {
+func UseLogger(logger *logrus.Entry) {
 	log = logger
 
 	// Update the logger for the registered drivers.
 	for _, drv := range drivers {
 		if drv.UseLogger != nil {
-			drv.UseLogger(logger)
+			drv.UseLogger(log)
 		}
 	}
 }

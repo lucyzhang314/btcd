@@ -1065,6 +1065,22 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 	return diff
 }
 
+func handleBlockNotFoundError(err error) *btcjson.RPCError {
+
+	dbErr, ok := err.(database.Error)
+	if ok && (dbErr.ErrorCode == database.ErrLocalFileOutdated) {
+		return &btcjson.RPCError{
+			Code:    btcjson.ErrLocalFileOutdated,
+			Message: dbErr.Description,
+		}
+	}
+
+	return &btcjson.RPCError{
+		Code:    btcjson.ErrRPCBlockNotFound,
+		Message: "Block not found",
+	}
+}
+
 // handleGetBlock implements the getblock command.
 func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetBlockCmd)
@@ -1081,10 +1097,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		return err
 	})
 	if err != nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
+		return nil, handleBlockNotFoundError(err)
 	}
 	// If verbosity is 0, return the serialized block as a hex encoded string.
 	if c.Verbosity != nil && *c.Verbosity == 0 {
@@ -1342,10 +1355,7 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 	}
 	blockHeader, err := s.cfg.Chain.HeaderByHash(hash)
 	if err != nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
+		return nil, handleBlockNotFoundError(err)
 	}
 
 	// When the verbose flag isn't set, simply return the serialized block
@@ -2211,10 +2221,7 @@ func handleGetCFilter(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	if err != nil {
 		rpcsLog.Debugf("Could not find committed filter for %v: %v",
 			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
+		return nil, handleBlockNotFoundError(err)
 	}
 
 	rpcsLog.Debugf("Found committed filter for %v", hash)
@@ -2242,10 +2249,7 @@ func handleGetCFilterHeader(s *rpcServer, cmd interface{}, closeChan <-chan stru
 	} else {
 		rpcsLog.Debugf("Could not find header of committed filter for %v: %v",
 			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
+		return nil, handleBlockNotFoundError(err)
 	}
 
 	hash.SetBytes(headerBytes)
@@ -3319,10 +3323,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			// Fetch the header from chain.
 			header, err := s.cfg.Chain.HeaderByHash(blkHash)
 			if err != nil {
-				return nil, &btcjson.RPCError{
-					Code:    btcjson.ErrRPCBlockNotFound,
-					Message: "Block not found",
-				}
+				return nil, handleBlockNotFoundError(err)
 			}
 
 			// Get the block height from chain.
