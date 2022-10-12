@@ -152,13 +152,13 @@ func (c *client) Download(ctx context.Context, t Torrent, log *logrus.Entry) err
 				return nil
 			}
 
-			log.Info("[Download] Downloading",
-				"progress", fmt.Sprintf("%.2f%% %s/%s", stats.Progress, ByteCount(stats.BytesCompleted), ByteCount(stats.BytesTotal)),
-				"download", ByteCount(stats.DownloadRate)+"/s",
-				"upload", ByteCount(stats.UploadRate)+"/s",
-				"peers", stats.PeersUnique,
-				"connections", stats.ConnectionsTotal,
-				"files", stats.FilesTotal)
+			log.Info("[Download] Downloading ",
+				"progress ", fmt.Sprintf("%.2f%% %s/%s", stats.Progress, ByteCount(stats.BytesCompleted), ByteCount(stats.BytesTotal)), " ",
+				"download ", ByteCount(stats.DownloadRate)+"/s", " ",
+				"upload ", ByteCount(stats.UploadRate)+"/s", " ",
+				"peers", stats.PeersUnique, " ",
+				"connections ", stats.ConnectionsTotal, " ",
+				"files ", stats.FilesTotal, " ")
 			if stats.PeersUnique == 0 {
 				ips := tc.BadPeerIPs()
 				if len(ips) > 0 {
