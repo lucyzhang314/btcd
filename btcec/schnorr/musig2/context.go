@@ -206,12 +206,7 @@ func NewContext(signingKey *btcec.PrivateKey, shouldSort bool,
 		option(opts)
 	}
 
-	pubKey, err := schnorr.ParsePubKey(
-		schnorr.SerializePubKey(signingKey.PubKey()),
-	)
-	if err != nil {
-		return nil, err
-	}
+	pubKey := signingKey.PubKey()
 
 	ctx := &Context{
 		signingKey: signingKey,
@@ -243,7 +238,11 @@ func NewContext(signingKey *btcec.PrivateKey, shouldSort bool,
 		// the nonce now to pass in to the session once all the callers
 		// are known.
 		if opts.earlyNonce {
-			ctx.sessionNonce, err = GenNonces()
+			var err error
+			ctx.sessionNonce, err = GenNonces(
+				WithPublicKey(ctx.pubKey),
+				WithNonceSecretKeyAux(signingKey),
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -485,6 +484,7 @@ func (c *Context) NewSession(options ...SessionOption) (*Session, error) {
 		// in some auxiliary information to strengthen the nonce
 		// generated.
 		localNonces, err = GenNonces(
+			WithPublicKey(c.pubKey),
 			WithNonceSecretKeyAux(c.signingKey),
 			WithNonceCombinedKeyAux(c.combinedKey.FinalKey),
 		)
