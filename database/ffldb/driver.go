@@ -11,7 +11,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var log *logrus.Entry
+var log = logrus.NewEntry(logrus.New())
 
 const (
 	dbType = "ffldb"
