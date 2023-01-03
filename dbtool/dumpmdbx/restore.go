@@ -31,14 +31,14 @@ func StartRestore(ctx context.Context, restoreDir, targetDir string, log *logrus
 
 	// decompress block file
 	blockFilename := firstBlockFile[:len(firstBlockFile)-5] // ".0001"
-	if err := decompressFile(path.Join(restoreDir, blockFilename), path.Join(targetDir, blockFilename)); nil != err {
+	if err := decompressFile(path.Join(restoreDir, blockFilename), path.Join(targetDir, blockFilename), log); nil != err {
 		return err
 	}
 
 	tmpFile := generateTempFilename()
 	defer os.Remove(tmpFile)
 	// decompress DB to a temporary file
-	if err := decompressFile(path.Join(restoreDir, compressedFilename), tmpFile); nil != err {
+	if err := decompressFile(path.Join(restoreDir, compressedFilename), tmpFile, log); nil != err {
 		return err
 	}
 
@@ -68,7 +68,7 @@ func createDB(dbTargetPath string) {
 
 func restoreDB(ctx context.Context, restoreFilename, dbTargetPath string, log *logrus.Entry) error {
 	if !fileExists(restoreFilename) {
-		return fmt.Errorf("source dir: %s not existing.\n", restoreFilename)
+		return fmt.Errorf("source dir: %s not existing", restoreFilename)
 	}
 
 	logger := mdbxlog.New()

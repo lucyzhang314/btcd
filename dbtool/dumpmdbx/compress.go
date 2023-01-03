@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io"
 	"os"
 
@@ -54,7 +55,7 @@ func compressFile(fileNameIn, fileNameOut string) {
 	fmt.Println("compress finished")
 }
 
-func decompressFile(fileNameIn, fileNameOut string) error {
+func decompressFile(fileNameIn, fileNameOut string, log *logrus.Entry) error {
 
 	decompressFile, err := os.Create(fileNameOut)
 	if err != nil {
@@ -62,7 +63,7 @@ func decompressFile(fileNameIn, fileNameOut string) error {
 	}
 	defer decompressFile.Close()
 
-	fmt.Println("starting to de-compress file:", fileNameIn)
+	log.Info("starting to de-compress file:", fileNameIn)
 	loopIdx := 0
 	for {
 		loopIdx++
@@ -79,10 +80,10 @@ func decompressFile(fileNameIn, fileNameOut string) error {
 		buffer := new(bytes.Buffer)
 		count, err := io.Copy(buffer, lzmaRerader)
 		if err != nil {
-			fmt.Println("de-compress failed:", err)
+			log.Error("de-compress failed:", err)
 			return err
 		}
-		fmt.Println("de-compress chunk:", loopIdx, count)
+		log.Info("de-compress chunk:", loopIdx, count)
 
 		if _, err := decompressFile.Write(buffer.Bytes()); nil != err {
 			return err
