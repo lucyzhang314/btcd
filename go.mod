@@ -19,7 +19,7 @@ require (
 )
 
 require (
-	github.com/amazeDevs/btcd-torrents v0.0.0-20230103082123-902dab9e2bb0
+	github.com/amazeDevs/btcd-torrents v0.0.0-20230316073904-c96799b7dfd9
 	github.com/anacrolix/log v0.13.2-0.20220711050817-613cb738ef30
 	github.com/anacrolix/torrent v1.47.0
 	github.com/bodgit/sevenzip v1.3.0

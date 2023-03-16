@@ -48,6 +48,8 @@ github.com/amazeDevs/btcd-torrents v0.0.0-20220921052046-e4823eb65d7f h1:3qX0SSc
 github.com/amazeDevs/btcd-torrents v0.0.0-20220921052046-e4823eb65d7f/go.mod h1:zkTUMsaBsZTod59LO46q2/sGraOOcFpJLi0SOxA6/RI=
 github.com/amazeDevs/btcd-torrents v0.0.0-20230103082123-902dab9e2bb0 h1:NUkrp+IAqvRZvuad3zpK1GOGHrqQtVEOuTsRG/UE/N4=
 github.com/amazeDevs/btcd-torrents v0.0.0-20230103082123-902dab9e2bb0/go.mod h1:zkTUMsaBsZTod59LO46q2/sGraOOcFpJLi0SOxA6/RI=
+github.com/amazeDevs/btcd-torrents v0.0.0-20230316073904-c96799b7dfd9 h1:lO27mMLYm9gZPyqL0d0EPmjycOJgjF8ByFr9gH7YGHA=
+github.com/amazeDevs/btcd-torrents v0.0.0-20230316073904-c96799b7dfd9/go.mod h1:zkTUMsaBsZTod59LO46q2/sGraOOcFpJLi0SOxA6/RI=
 github.com/anacrolix/chansync v0.3.0 h1:lRu9tbeuw3wl+PhMu/r+JJCRu5ArFXIluOgdF0ao6/U=
 github.com/anacrolix/chansync v0.3.0/go.mod h1:DZsatdsdXxD0WiwcGl0nJVwyjCKMDv+knl1q2iBjA2k=
 github.com/anacrolix/dht/v2 v2.19.0 h1:A9oMHWRGbLmCyx1JlYzg79bDrur8V60+0ts8ZwEVYt4=
