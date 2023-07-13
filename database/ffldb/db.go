@@ -289,7 +289,7 @@ func init_mdbx(dbPath string, network wire.BitcoinNet, create bool) (kv.RwDB, er
 	}
 
 	logger := mdbxlog.New()
-	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+	mdb := mdbx.NewMDBX(logger).Path(metadataDbPath).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
 			// mdbxBucketIndex: kv.TableCfgItem{Flags: kv.Default},

@@ -6,9 +6,11 @@ package wire
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 )
@@ -218,6 +220,29 @@ func NewOutPoint(hash *chainhash.Hash, index uint32) *OutPoint {
 	}
 }
 
+// NewOutPointFromString returns a new bitcoin transaction outpoint parsed from
+// the provided string, which should be in the format "hash:index".
+func NewOutPointFromString(outpoint string) (*OutPoint, error) {
+	parts := strings.Split(outpoint, ":")
+	if len(parts) != 2 {
+		return nil, errors.New("outpoint should be of the form txid:index")
+	}
+	hash, err := chainhash.NewHashFromStr(parts[0])
+	if err != nil {
+		return nil, err
+	}
+
+	outputIndex, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("invalid output index: %v", err)
+	}
+
+	return &OutPoint{
+		Hash:  *hash,
+		Index: uint32(outputIndex),
+	}, nil
+}
+
 // String returns the OutPoint in the human-readable form "hash:index".
 func (o OutPoint) String() string {
 	// Allocate enough for hash string, colon, and 10 digits.  Although
@@ -267,7 +292,7 @@ func NewTxIn(prevOut *OutPoint, signatureScript []byte, witness [][]byte) *TxIn 
 // a slice of byte slices, or a stack with one or many elements.
 type TxWitness [][]byte
 
-// SerializeSize returns the number of bytes it would take to serialize the the
+// SerializeSize returns the number of bytes it would take to serialize the
 // transaction input's witness.
 func (t TxWitness) SerializeSize() int {
 	// A varint to signal the number of elements the witness has.

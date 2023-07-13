@@ -62,7 +62,7 @@ func dumpDB(dbPathDump, tmpFilePath string) {
 		return
 	}
 
-	mdb := mdbx.NewMDBX(logger).Path(dbpath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+	mdb := mdbx.NewMDBX(logger).Path(dbpath).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
 		}

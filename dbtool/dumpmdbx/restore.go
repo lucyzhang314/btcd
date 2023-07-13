@@ -58,7 +58,7 @@ func StartRestore(ctx context.Context, restoreDir, targetDir string, log *logrus
 
 func createDB(dbTargetPath string) {
 	logger := mdbxlog.New()
-	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
 		}
@@ -72,7 +72,7 @@ func restoreDB(ctx context.Context, restoreFilename, dbTargetPath string, log *l
 	}
 
 	logger := mdbxlog.New()
-	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTablessCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
+	mdb := mdbx.NewMDBX(logger).Path(dbTargetPath).WithTableCfg(func(defaultBuckets kv.TableCfg) kv.TableCfg {
 		return kv.TableCfg{
 			mdbxBucketRoot: kv.TableCfgItem{Flags: kv.Default},
 		}

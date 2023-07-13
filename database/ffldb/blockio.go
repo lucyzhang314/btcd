@@ -144,7 +144,7 @@ type blockStore struct {
 	// openBlocksLRU tracks how the open files are refenced by pushing the
 	// most recently used files to the front of the list thereby trickling
 	// the least recently used files to end of the list.  When a file needs
-	// to be closed due to exceeding the the max number of allowed open
+	// to be closed due to exceeding the max number of allowed open
 	// files, the one at the end of the list is closed.
 	//
 	// fileNumToLRUElem is a mapping between a specific block file number
@@ -760,8 +760,8 @@ func (s *blockStore) syncBlocks() error {
 // were partially written.
 //
 // There are effectively two scenarios to consider here:
-//   1) Transient write failures from which recovery is possible
-//   2) More permanent failures such as hard disk death and/or removal
+//  1. Transient write failures from which recovery is possible
+//  2. More permanent failures such as hard disk death and/or removal
 //
 // In either case, the write cursor will be repositioned to the old block file
 // offset regardless of any other errors that occur while attempting to undo

@@ -486,7 +486,7 @@ func (c *dbCache) do_commitTreaps(mdbTx kv.RwTx, pendingKeys, pendingRemove Trea
 	}
 
 	pendingRemove.ForEach(func(k, v []byte) bool {
-		if dbErr := mdbTx.Delete(mdbxBucketRoot, k, nil); dbErr != nil {
+		if dbErr := mdbTx.Delete(mdbxBucketRoot, k); dbErr != nil {
 			str := fmt.Sprintf("failed to delete "+"key %q from ldb transaction", k)
 			innerErr = convertErr(str, dbErr)
 			return false
