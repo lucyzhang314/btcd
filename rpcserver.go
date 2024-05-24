@@ -1084,7 +1084,7 @@ func handleBlockNotFoundError(err error) *btcjson.RPCError {
 	dbErr, ok := err.(database.Error)
 	if ok && (dbErr.ErrorCode == database.ErrLocalFileOutdated) {
 		return &btcjson.RPCError{
-			Code:    btcjson.ErrLocalFileOutdated,
+			//Code:    btcjson.ErrLocalFileOutdated,
 			Message: dbErr.Description,
 		}
 	}

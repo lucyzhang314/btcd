@@ -166,7 +166,6 @@ const (
 // server are most likely to see.  Generally, the codes should match one of the
 // more general errors above.
 const (
-	ErrLocalFileOutdated    RPCErrorCode = -55
 	ErrRPCBlockNotFound     RPCErrorCode = -5
 	ErrRPCBlockCount        RPCErrorCode = -5
 	ErrRPCBestBlockHash     RPCErrorCode = -5
