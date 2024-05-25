@@ -10,12 +10,14 @@ package ffldb
 import (
 	"container/list"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -24,6 +26,10 @@ import (
 )
 
 const (
+	// blockFileExtension is the extension that's used to store the block
+	// files on the disk.
+	blockFileExtension = ".fdb"
+
 	// The Bitcoin protocol encodes block height as int32, so max number of
 	// blocks is 2^31.  Max block size per the protocol is 32MiB per block.
 	// So the theoretical max at the time this comment was written is 64PiB
@@ -33,7 +39,7 @@ const (
 	// 512MiB each for a total of ~476.84PiB (roughly 7.4 times the current
 	// theoretical max), so there is room for the max block size to grow in
 	// the future.
-	blockFilenameTemplate = "%09d.fdb"
+	blockFilenameTemplate = "%09d" + blockFileExtension
 
 	// maxOpenFiles is the max number of open files to maintain in the
 	// open blocks cache.  Note that this does not include the current
@@ -882,11 +888,48 @@ func (bs *blockStore) scanBlockFiles(curFileNumDB, curOffsetDB uint32) {
 			//
 			break
 		}
+// find the first file, last file, and the end of the most recent file.  The
+// position at the last file is considered the current write cursor which is
+// also stored in the metadata.  Thus, it is used to detect unexpected shutdowns
+// in the middle of writes so the block files can be reconciled.
+func scanBlockFiles(dbPath string) (int, int, uint32, error) {
+	firstFile, lastFile, lastFileLen, err := int(-1), int(-1), uint32(0), error(nil)
 
+	files, err := filepath.Glob(filepath.Join(dbPath, "*"+blockFileExtension))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	sort.Strings(files)
+
+	// Return early if there's no block files.
+	if len(files) == 0 {
+		return firstFile, lastFile, lastFileLen, nil
+	}
+
+	// Grab the first and last file's number.
+	firstFile, err = strconv.Atoi(strings.TrimSuffix(filepath.Base(files[0]), blockFileExtension))
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("scanBlockFiles error: %v", err)
+	}
+	lastFile, err = strconv.Atoi(strings.TrimSuffix(filepath.Base(files[len(files)-1]), blockFileExtension))
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("scanBlockFiles error: %v", err)
+	}
+
+	// Get the last file's length.
+	filePath := blockFilePath(dbPath, uint32(lastFile))
+	st, err := os.Stat(filePath)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	lastFileLen = uint32(st.Size())
+
+	log.Tracef("Scan found latest block file #%d with length %d", lastFile, lastFileLen)
 		lastFile = fileNumIdx
 		fileLen = uint32(st.Size())
 	}
 
+	return firstFile, lastFile, lastFileLen, err
 	log.Tracef("Scan found latest block file #%d with length %d", lastFile, fileLen)
 
 	bs.writeCursor.curFileNum = lastFile
@@ -895,10 +938,18 @@ func (bs *blockStore) scanBlockFiles(curFileNumDB, curOffsetDB uint32) {
 
 // newBlockStore returns a new block store with the current block file number
 // and offset set and all fields initialized.
-func newBlockStore(basePath string, network wire.BitcoinNet) *blockStore {
+func newBlockStore(basePath string, network wire.BitcoinNet) (*blockStore, error) {
 	// Look for the end of the latest block to file to determine what the
 	// write cursor position is from the viewpoing of the block files on
 	// disk.
+	_, fileNum, fileOff, err := scanBlockFiles(basePath)
+	if err != nil {
+		return nil, err
+	}
+	if fileNum == -1 {
+		fileNum = 0
+		fileOff = 0
+	}
 
 	store := &blockStore{
 		network:          network,
@@ -917,5 +968,5 @@ func newBlockStore(basePath string, network wire.BitcoinNet) *blockStore {
 	store.openFileFunc = store.openFile
 	store.openWriteFileFunc = store.openWriteFile
 	store.deleteFileFunc = store.deleteFile
-	return store
+	return store, nil
 }
